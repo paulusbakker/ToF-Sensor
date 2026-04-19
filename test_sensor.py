@@ -29,11 +29,14 @@ def write_reg(bus, reg, data):
 
 
 def read_reg(bus, reg, n=1):
-    w = i2c_msg.write(ADDR, [(reg >> 8) & 0xFF, reg & 0xFF])
+    # Two separate transactions: write address, then read data
+    bus.i2c_rdwr(i2c_msg.write(ADDR, [(reg >> 8) & 0xFF, reg & 0xFF]))
     r = i2c_msg.read(ADDR, n)
-    bus.i2c_rdwr(w, r)
+    bus.i2c_rdwr(r)
     return bytes(r)
 
+
+time.sleep(0.1)  # allow sensor to boot
 
 with SMBus(BUS) as bus:
     chip_id = read_reg(bus, 0x010F)[0]
