@@ -1,20 +1,67 @@
 import time
-import board
-import adafruit_vl53l1x
+from smbus2 import SMBus, i2c_msg
 
-i2c = board.I2C()
-vl53 = adafruit_vl53l1x.VL53L1X(i2c)
-vl53.start_ranging()
+ADDR = 0x29
+BUS = 1
 
-try:
-    while True:
-        if vl53.data_ready:
-            distance_cm = vl53.distance
-            if distance_cm is not None:
-                print(f"Afstand: {distance_cm:.1f} cm")
-            vl53.clear_interrupt()
-        time.sleep(0.1)
-except KeyboardInterrupt:
-    pass
-finally:
-    vl53.stop_ranging()
+# Default config from ST VL53L1X ULD API, written to registers 0x002D-0x0087
+DEFAULT_CONFIG = bytes([
+    0x00, 0x00, 0x00, 0x01, 0x02, 0x00, 0x02, 0x08,
+    0x00, 0x08, 0x10, 0x01, 0x01, 0x00, 0x00, 0x00,
+    0x00, 0xff, 0x00, 0x0F, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x20, 0x0b, 0x00, 0x00, 0x02, 0x0a, 0x21,
+    0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0xc8,
+    0x00, 0x00, 0x38, 0xff, 0x01, 0x00, 0x08, 0x00,
+    0x00, 0x01, 0xdb, 0x0f, 0x01, 0xf1, 0x0d, 0x01,
+    0x68, 0x00, 0x80, 0x08, 0xb8, 0x00, 0x00, 0x00,
+    0x00, 0x0f, 0x89, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x01, 0x0f, 0x0d, 0x0e, 0x0e, 0x00,
+    0x00, 0x02, 0xc7, 0xff, 0x9b, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00,
+])
+
+
+def write_reg(bus, reg, data):
+    if isinstance(data, int):
+        data = bytes([data])
+    payload = bytes([(reg >> 8) & 0xFF, reg & 0xFF]) + bytes(data)
+    bus.i2c_rdwr(i2c_msg.write(ADDR, payload))
+
+
+def read_reg(bus, reg, n=1):
+    w = i2c_msg.write(ADDR, [(reg >> 8) & 0xFF, reg & 0xFF])
+    r = i2c_msg.read(ADDR, n)
+    bus.i2c_rdwr(w, r)
+    return bytes(r)
+
+
+with SMBus(BUS) as bus:
+    chip_id = read_reg(bus, 0x010F)[0]
+    print(f"Chip ID: 0x{chip_id:02X}  (verwacht: 0xEA)")
+
+    for _ in range(100):
+        if read_reg(bus, 0x00FF)[0] == 0x03:
+            break
+        time.sleep(0.01)
+    else:
+        raise RuntimeError("Sensor niet opgestart binnen timeout")
+
+    write_reg(bus, 0x002D, DEFAULT_CONFIG)
+    write_reg(bus, 0x0087, 0x40)  # start continuous ranging
+    time.sleep(0.01)
+
+    try:
+        while True:
+            for _ in range(100):
+                if (read_reg(bus, 0x0031)[0] & 0x01) == 0:
+                    break
+                time.sleep(0.005)
+            data = read_reg(bus, 0x0096, 2)
+            distance_mm = (data[0] << 8) | data[1]
+            print(f"Afstand: {distance_mm} mm")
+            write_reg(bus, 0x0086, 0x01)  # clear interrupt
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        write_reg(bus, 0x0087, 0x00)  # stop ranging
