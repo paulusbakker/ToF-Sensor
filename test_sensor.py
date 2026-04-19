@@ -1,17 +1,20 @@
 import time
-import VL53L1X  # pip install vl53l1x
+import board
+import adafruit_vl53l1x
 
-tof = VL53L1X.VL53L1X(i2c_bus=1, i2c_address=0x29)
-tof.open()
-tof.start_ranging(1)  # 1 = short (~1.3m), 2 = medium (~3m), 3 = long (~4m)
+i2c = board.I2C()
+vl53 = adafruit_vl53l1x.VL53L1X(i2c)
+vl53.start_ranging()
 
 try:
     while True:
-        distance_mm = tof.get_distance()
-        print(f"Afstand: {distance_mm} mm")
+        if vl53.data_ready:
+            distance_cm = vl53.distance
+            if distance_cm is not None:
+                print(f"Afstand: {distance_cm:.1f} cm")
+            vl53.clear_interrupt()
         time.sleep(0.1)
 except KeyboardInterrupt:
     pass
 finally:
-    tof.stop_ranging()
-    tof.close()
+    vl53.stop_ranging()
