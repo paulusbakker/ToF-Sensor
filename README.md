@@ -20,8 +20,11 @@ sudo raspi-config  # → Interface Options → I2C → Enable
 # Controleer of de sensor zichtbaar is (adres 0x29)
 i2cdetect -y 1
 
-# Maak venv en installeer
-python3 -m venv venv
+# Installeer lgpio via apt (vereist op Pi 5)
+sudo apt install python3-lgpio
+
+# Maak venv aan met toegang tot systeempakketten
+python3 -m venv --system-site-packages venv
 source venv/bin/activate
 pip install adafruit-circuitpython-vl53l1x
 ```
