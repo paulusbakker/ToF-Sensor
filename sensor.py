@@ -81,17 +81,33 @@ class VL53L1X:
         self._write(0x0086, 0x01)
         return (data[0] << 8) | data[1]
 
-    def read_distance_mm(self) -> int:
-        samples = []
-        for _ in range(5):
+    def read_ambient(self) -> int:
+        data = self._read(0x0090, 2)
+        return (data[0] << 8) | data[1]
+
+    def read_distance_mm(self, samples=5):
+        distances = []
+        ambients = []
+        for _ in range(samples):
             v = self._read_once()
             if v > 0:
-                samples.append(v)
+                distances.append(v)
+            ambients.append(self.read_ambient())
             time.sleep(0.02)
-        if not samples:
-            return -1
-        samples.sort()
-        return samples[len(samples) // 2]
+
+        ambient_avg = round(sum(ambients) / len(ambients)) if ambients else 0
+
+        if not distances:
+            return (-1, 0)
+
+        mean = sum(distances) / len(distances)
+        std_dev = (sum((d - mean) ** 2 for d in distances) / len(distances)) ** 0.5
+        if std_dev > 15:
+            return (-2, ambient_avg)
+
+        distances.sort()
+        median = distances[len(distances) // 2]
+        return (median, ambient_avg)
 
     def __enter__(self):
         self.connect()

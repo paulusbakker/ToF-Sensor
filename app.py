@@ -47,17 +47,45 @@ def _sensor_loop():
         while True:
             try:
                 sensor.connect()
+                AMBIENT_THRESHOLD = 800
                 prev_dist = None
                 reject_streak = 0
+                fridge_open = False
                 while True:
-                    dist = sensor.read_distance_mm()
-                    if dist < 0:
+                    dist, ambient = sensor.read_distance_mm()
+                    log.debug(f"ambient={ambient}")
+                    if dist == -1:
                         time.sleep(config.MEASURE_INTERVAL)
                         continue
-                    if prev_dist is not None and abs(dist - prev_dist) > 80 and reject_streak < 3:
-                        log.warning(f"[sensor] outlier verworpen: dist={dist}mm (vorige={prev_dist}mm)")
+                    if dist == -2:
+                        log.warning("[sensor] hoge spreiding")
                         reject_streak += 1
+                        if reject_streak >= 4 and not fridge_open:
+                            log.info("[sensor] koelkast open gedetecteerd")
+                            fridge_open = True
+                        time.sleep(config.MEASURE_INTERVAL)
                         continue
+                    if ambient > AMBIENT_THRESHOLD:
+                        log.info(f"[sensor] ambient={ambient}")
+                        _broadcast({"type": "fridge_open", "ambient": ambient})
+                        reject_streak += 1
+                        if reject_streak >= 4 and not fridge_open:
+                            log.info("[sensor] koelkast open gedetecteerd")
+                            fridge_open = True
+                        time.sleep(config.MEASURE_INTERVAL)
+                        continue
+                    if prev_dist is not None and abs(dist - prev_dist) > 80:
+                        reject_streak += 1
+                        if reject_streak >= 4 and not fridge_open:
+                            log.info("[sensor] koelkast open gedetecteerd")
+                            fridge_open = True
+                        time.sleep(config.MEASURE_INTERVAL)
+                        continue
+                    if fridge_open:
+                        log.info("[sensor] koelkast dicht")
+                        _broadcast({"type": "fridge_closed"})
+                        time.sleep(60)
+                        fridge_open = False
                     reject_streak = 0
                     prev_dist = dist
                     with _lock:
@@ -77,7 +105,7 @@ def _sensor_loop():
                     db.log_measurement(session["id"], dist, rise_mm, rise_pct, speed)
                     all_m   = db.get_measurements(session["id"])
                     summary = analyzer.summarize(all_m)
-                    _broadcast({"type": "measurement", **summary})
+                    _broadcast({"type": "measurement", "ambient": ambient, **summary})
                     log.info(f"dist={dist}mm  rijs={rise_mm:.1f}mm  speed={speed:.2f}mm/u")
                     signal = analyzer.check_baking_moment(all_m)
                     if signal.triggered and _oven_timer is None and not _oven_on:

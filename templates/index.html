@@ -216,6 +216,18 @@
       </div>
     </div>
 
+    <!-- Lichtsensor -->
+    <div class="card">
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:10px;font-weight:600;">LICHTSENSOR</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;height:8px;background:#1a1008;border-radius:4px;overflow:hidden;">
+          <div id="ambient-bar" style="height:100%;width:0%;background:var(--green);transition:width .5s,background .5s;"></div>
+        </div>
+        <div id="ambient-value" style="font-size:.75rem;color:var(--muted);white-space:nowrap;">0 / 1500 (drempel: 800)</div>
+      </div>
+      <div class="signal-text" id="ambient-status" style="color:var(--green);">✓ Normaal</div>
+    </div>
+
     <!-- Getallen -->
     <div class="metrics">
       <div class="metric">
@@ -462,6 +474,36 @@ function setText(id, val) {
   if (el) el.textContent = val;
 }
 
+function updateAmbient(ambient) {
+  const pct = Math.min(ambient / 1500 * 100, 100);
+  const bar    = document.getElementById('ambient-bar');
+  const status = document.getElementById('ambient-status');
+  const value  = document.getElementById('ambient-value');
+  if (value) value.textContent = ambient + ' / 1500 (drempel: 800)';
+  if (bar) {
+    bar.style.width = pct + '%';
+    if (ambient < 800) {
+      bar.style.background = 'var(--green)';
+    } else if (ambient <= 1200) {
+      bar.style.background = 'var(--amber)';
+    } else {
+      bar.style.background = 'var(--red)';
+    }
+  }
+  if (status) {
+    if (ambient < 800) {
+      status.textContent = '✓ Normaal';
+      status.style.color = 'var(--green)';
+    } else if (ambient <= 1200) {
+      status.textContent = '⚠ Licht gedetecteerd';
+      status.style.color = 'var(--amber)';
+    } else {
+      status.textContent = '✗ Koelkast open — meting gepauzeerd';
+      status.style.color = 'var(--red)';
+    }
+  }
+}
+
 // ── SSE ───────────────────────────────────────────────────
 function connect() {
   const evs = new EventSource('/stream');
@@ -477,12 +519,23 @@ function connect() {
     try { data = JSON.parse(e.data); } catch { return; }
 
     if (data.type === 'history')      applyHistory(data);
-    else if (data.type === 'measurement') addPoint(data);
+    else if (data.type === 'measurement') { addPoint(data); if (data.ambient != null) updateAmbient(data.ambient); }
     else if (data.type === 'oven_scheduled') showOvenAlert(data);
     else if (data.type === 'oven_on') {
       const el = document.getElementById('oven-alert');
       el.style.background = 'linear-gradient(135deg, #14532d, #052e16)';
       setText('oven-countdown', data.success ? '✅ Oven is aan!' : '⚠️ Kon oven niet aanzetten');
+    }
+    else if (data.type === 'fridge_open') {
+      updateAmbient(data.ambient);
+      const status = document.getElementById('ambient-status');
+      if (status) { status.textContent = '✗ Koelkast open — meting gepauzeerd'; status.style.color = 'var(--red)'; }
+    }
+    else if (data.type === 'fridge_closed') {
+      const status = document.getElementById('ambient-status');
+      const bar    = document.getElementById('ambient-bar');
+      if (status) { status.textContent = '✓ Normaal — 60s stabilisatie…'; status.style.color = 'var(--green)'; }
+      if (bar)    { bar.style.background = 'var(--green)'; }
     }
     else if (data.type === 'no_session') showNoSession();
   };
