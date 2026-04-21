@@ -365,6 +365,15 @@ function updateChart() {
 
   chart.data.datasets[0].data = pts.map(p => ({ x: p.ts * 1000, y: p.rise_mm  || 0 }));
   chart.data.datasets[1].data = pts.map(p => ({ x: p.ts * 1000, y: Math.max(0, p.speed_mm_h || 0) }));
+
+  if (minutes) {
+    chart.options.scales.x.min = cutoff * 1000;
+    chart.options.scales.x.max = Date.now();
+  } else {
+    delete chart.options.scales.x.min;
+    delete chart.options.scales.x.max;
+  }
+
   chart.update('none');
 }
 
