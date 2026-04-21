@@ -159,6 +159,18 @@
 
   .btn-start { width: 100%; margin-top: 4px; }
 
+  /* ── Oven status ── */
+  .btn-oven:not(.active), .btn-stop:not(.active) { opacity: 0.45; }
+  .btn-oven.active { box-shadow: 0 0 14px var(--orange); }
+  .btn-stop.active { box-shadow: 0 0 10px #60a5fa; }
+  .oven-status-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: background .3s;
+  }
+  .oven-status-dot.on { background: var(--orange); box-shadow: 0 0 8px var(--orange); animation: pulse 1s infinite; }
+
   /* ── Last update ── */
   .last-update {
     text-align: center;
@@ -275,7 +287,11 @@
 
     <!-- Oven besturing -->
     <div class="card">
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:10px;font-weight:600;">OVEN BESTURING</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:6px;font-weight:600;">OVEN BESTURING</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <div class="oven-status-dot" id="oven-dot"></div>
+        <span style="font-size:.8rem;color:var(--muted);" id="oven-label">Uit</span>
+      </div>
       <div class="oven-section">
         <button class="btn btn-oven" id="btn-oven-on"  onclick="controlOven('on')">🔥 Oven AAN</button>
         <button class="btn btn-stop" id="btn-oven-off" onclick="controlOven('off')">⏹ Oven UIT</button>
@@ -519,13 +535,19 @@ function connect() {
     try { data = JSON.parse(e.data); } catch { return; }
 
     if (data.type === 'history')      applyHistory(data);
-    else if (data.type === 'measurement') { addPoint(data); if (data.ambient != null) updateAmbient(data.ambient); }
+    else if (data.type === 'measurement') {
+      addPoint(data);
+      if (data.ambient != null) updateAmbient(data.ambient);
+      if (data.oven_on != null) setOvenState(data.oven_on);
+    }
     else if (data.type === 'oven_scheduled') showOvenAlert(data);
     else if (data.type === 'oven_on') {
       const el = document.getElementById('oven-alert');
       el.style.background = 'linear-gradient(135deg, #14532d, #052e16)';
       setText('oven-countdown', data.success ? '✅ Oven is aan!' : '⚠️ Kon oven niet aanzetten');
+      if (data.oven_on != null) setOvenState(data.oven_on);
     }
+    else if (data.type === 'oven_state') setOvenState(data.oven_on);
     else if (data.type === 'fridge_open') {
       updateAmbient(data.ambient);
       const status = document.getElementById('ambient-status');
@@ -572,6 +594,24 @@ async function startSession() {
   }
 }
 
+function setOvenState(on) {
+  const btnOn  = document.getElementById('btn-oven-on');
+  const btnOff = document.getElementById('btn-oven-off');
+  const dot    = document.getElementById('oven-dot');
+  const label  = document.getElementById('oven-label');
+  if (on) {
+    btnOn.classList.add('active');
+    btnOff.classList.remove('active');
+    if (dot)   dot.classList.add('on');
+    if (label) label.textContent = 'Aan';
+  } else {
+    btnOn.classList.remove('active');
+    btnOff.classList.add('active');
+    if (dot)   dot.classList.remove('on');
+    if (label) label.textContent = 'Uit';
+  }
+}
+
 async function controlOven(action) {
   try {
     const r = await fetch('/api/oven', {
@@ -593,6 +633,7 @@ connect();
 // Check status bij laden
 fetch('/api/status').then(r => r.json()).then(d => {
   if (!d.session) showNoSession();
+  if (d.oven_on != null) setOvenState(d.oven_on);
 });
 </script>
 </body>
