@@ -40,7 +40,7 @@ def _broadcast(payload: dict):
 
 def _sensor_loop():
     global _oven_timer, _oven_on, _latest_distance_mm
-    print("[sensor_loop] thread gestart")
+    print("[sensor_loop] thread gestart", flush=True)
     try:
         from sensor import VL53L1X
         sensor = VL53L1X()
@@ -88,7 +88,7 @@ def _sensor_loop():
                     pass
                 time.sleep(10)
     except Exception:
-        print("[sensor_loop] fatale fout, thread stopt:")
+        print("[sensor_loop] fatale fout, thread stopt:", flush=True)
         traceback.print_exc()
 
 
@@ -192,5 +192,6 @@ def api_history():
 if __name__ == "__main__":
     db.init_db()
     threading.Thread(target=_sensor_loop, daemon=True).start()
+    print("[main] sensor thread aangemaakt", flush=True)
     log.info(f"Dashboard: http://0.0.0.0:{config.FLASK_PORT}")
     app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, threaded=True, debug=False)
