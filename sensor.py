@@ -71,15 +71,23 @@ class VL53L1X:
             self._bus = None
 
     def _read_once(self) -> int:
-        for _ in range(100):
-            if (self._read(0x0031)[0] & 0x01) == 0:
+        val = 0xFF
+        fired_at = -1
+        for i in range(100):
+            val = self._read(0x0031)[0]
+            if (val & 0x01) == 0:
+                fired_at = i
                 break
             time.sleep(0.005)
         else:
+            print(f"[sensor] _read_once timeout na 100 iter, 0x0031=0x{val:02X}", flush=True)
             return -1
-        data = self._read(0x0096, 2)
+        status = self._read(0x0089)[0]
+        data   = self._read(0x0096, 2)
         self._write(0x0086, 0x01)
-        return (data[0] << 8) | data[1]
+        dist = (data[0] << 8) | data[1]
+        print(f"[sensor] _read_once: iter={fired_at} 0x0031=0x{val:02X} status=0x{status:02X} dist={dist}", flush=True)
+        return dist
 
     def read_ambient(self) -> int:
         data = self._read(0x0090, 2)
