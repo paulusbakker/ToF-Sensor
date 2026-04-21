@@ -21,6 +21,7 @@ _active_session = None
 _oven_timer = None
 _oven_on = False
 _sse_clients = []
+_latest_distance_mm = None
 
 
 def _broadcast(payload: dict):
@@ -37,7 +38,7 @@ def _broadcast(payload: dict):
 
 
 def _sensor_loop():
-    global _oven_timer, _oven_on
+    global _oven_timer, _oven_on, _latest_distance_mm
     from sensor import VL53L1X
     sensor = VL53L1X()
     while True:
@@ -49,6 +50,7 @@ def _sensor_loop():
                     time.sleep(config.MEASURE_INTERVAL)
                     continue
                 with _lock:
+                    _latest_distance_mm = dist
                     session = _active_session
                 if session is None:
                     time.sleep(5)
@@ -133,14 +135,16 @@ def stream():
 def api_start():
     global _active_session, _oven_timer, _oven_on
     notes = (request.json or {}).get("notes", "")
-    from sensor import VL53L1X
-    try:
-        with VL53L1X() as s:
-            baseline = s.read_distance_mm()
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-    if baseline < 0:
-        return jsonify({"ok": False, "error": "Sensor time-out"}), 500
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        with _lock:
+            dist = _latest_distance_mm
+        if dist is not None and dist > 0:
+            break
+        time.sleep(1)
+    else:
+        return jsonify({"ok": False, "error": "Geen sensordata beschikbaar (timeout)"}), 500
+    baseline = dist
     session_id = db.start_session(float(baseline), notes)
     with _lock:
         _active_session = db.get_active_session()
