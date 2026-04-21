@@ -82,6 +82,32 @@ def end_session(session_id: int):
         )
 
 
+def list_unclosed_sessions() -> list:
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY id DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def cleanup_orphan_sessions() -> int:
+    cutoff = time.time() - 7 * 86400
+    with _conn() as c:
+        orphans = c.execute(
+            """SELECT s.id FROM sessions s
+               LEFT JOIN measurements m ON m.session_id = s.id
+               WHERE s.ended_at IS NULL
+               AND (m.id IS NULL OR s.started_at < ?)
+               GROUP BY s.id""",
+            (cutoff,),
+        ).fetchall()
+    count = 0
+    for row in orphans:
+        end_session(row["id"])
+        count += 1
+    return count
+
+
 def list_sessions() -> list:
     with _conn() as c:
         rows = c.execute(

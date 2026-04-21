@@ -195,11 +195,9 @@ def api_start():
     hydration    = body.get("hydration_pct")
     hydration    = int(hydration) if hydration is not None else None
 
-    # Sluit vorige sessie af
-    with _lock:
-        prev = _active_session
-    if prev:
-        db.end_session(prev["id"])
+    # Sluit ALLE open sessies af (ook sessies van voor een reboot)
+    for sess in db.list_unclosed_sessions():
+        db.end_session(sess["id"])
 
     deadline = time.time() + 60
     while time.time() < deadline:
@@ -294,26 +292,28 @@ def api_session_export(session_id):
     )
 
 
+@app.route("/api/admin/cleanup", methods=["POST"])
+def api_admin_cleanup():
+    count = db.cleanup_orphan_sessions()
+    return jsonify({"ok": True, "closed": count})
+
+
 if __name__ == "__main__":
     db.init_db()
 
-    # Sessie-herstel na herstart
-    last = db.get_active_session()
-    if last:
-        if last.get("ended_at"):
-            _active_session = None
+    # Sessie-herstel en opruiming bij herstart: loop langs ALLE open sessies
+    now = time.time()
+    for sess in db.list_unclosed_sessions():
+        measurements = db.get_measurements(sess["id"])
+        if not measurements or (now - measurements[-1]["ts"]) >= 86400:
+            db.end_session(sess["id"])
+            log.info(f"[main] Sessie {sess['id']} afgesloten (te oud of leeg)")
+        elif _active_session is None:
+            _active_session = sess
+            log.info(f"[main] Sessie {sess['id']} hersteld")
         else:
-            measurements = db.get_measurements(last["id"])
-            if measurements:
-                age = time.time() - measurements[-1]["ts"]
-                if age < 86400:
-                    _active_session = last
-                    log.info(f"[main] Sessie {last['id']} hersteld")
-                else:
-                    db.end_session(last["id"])
-                    log.info(f"[main] Sessie {last['id']} afgesloten (te oud)")
-            else:
-                _active_session = last
+            db.end_session(sess["id"])
+            log.info(f"[main] Sessie {sess['id']} afgesloten (dubbel actief)")
 
     threading.Thread(target=_sensor_loop, daemon=True).start()
     print("[main] sensor thread aangemaakt", flush=True)
