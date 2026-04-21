@@ -159,7 +159,7 @@ def stream():
         if session:
             history = db.get_measurements(session["id"])
             summary = analyzer.summarize(history)
-            yield f"data: {json.dumps({'type': 'history', 'points': history, **summary})}\n\n"
+            yield f"data: {json.dumps({'type': 'history', 'points': history, 'oven_on': _oven_on, **summary})}\n\n"
         else:
             yield f"data: {json.dumps({'type': 'no_session'})}\n\n"
         try:

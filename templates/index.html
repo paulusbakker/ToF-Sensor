@@ -442,6 +442,7 @@ function applyData(d) {
 function applyHistory(data) {
   if (data.points) allPoints = data.points;
   applyData(data);
+  if (data.oven_on != null) setOvenState(data.oven_on);
   updateChart();
 }
 
@@ -620,7 +621,8 @@ async function controlOven(action) {
       body: JSON.stringify({action})
     });
     const d = await r.json();
-    if (!d.ok) alert('Oven commando mislukt');
+    if (d.ok) setOvenState(action === 'on');
+    else alert('Oven commando mislukt');
   } catch (err) {
     alert('Fout: ' + err.message);
   }
