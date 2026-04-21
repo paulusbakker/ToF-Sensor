@@ -90,22 +90,30 @@ def list_unclosed_sessions() -> list:
         return [dict(r) for r in rows]
 
 
-def cleanup_orphan_sessions() -> int:
-    cutoff = time.time() - 7 * 86400
-    with _conn() as c:
-        orphans = c.execute(
-            """SELECT s.id FROM sessions s
-               LEFT JOIN measurements m ON m.session_id = s.id
-               WHERE s.ended_at IS NULL
-               AND (m.id IS NULL OR s.started_at < ?)
-               GROUP BY s.id""",
-            (cutoff,),
-        ).fetchall()
-    count = 0
-    for row in orphans:
-        end_session(row["id"])
-        count += 1
-    return count
+def cleanup_all_unclosed() -> tuple:
+    closed = deleted = 0
+    for sess in list_unclosed_sessions():
+        sid = sess["id"]
+        with _conn() as c:
+            rows = c.execute(
+                "SELECT ts, rise_mm, speed_mm_h FROM measurements WHERE session_id=? ORDER BY ts DESC",
+                (sid,),
+            ).fetchall()
+        if not rows:
+            with _conn() as c:
+                c.execute("DELETE FROM sessions WHERE id=?", (sid,))
+            deleted += 1
+        else:
+            ended_at   = rows[0]["ts"]
+            peak_speed = max((r["speed_mm_h"] or 0) for r in rows)
+            total_rise = max((r["rise_mm"] or 0) for r in rows)
+            with _conn() as c:
+                c.execute(
+                    "UPDATE sessions SET ended_at=?, peak_speed_mm_h=?, total_rise_mm=? WHERE id=?",
+                    (ended_at, peak_speed, total_rise, sid),
+                )
+            closed += 1
+    return closed, deleted
 
 
 def list_sessions() -> list:

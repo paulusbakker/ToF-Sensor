@@ -294,8 +294,10 @@ def api_session_export(session_id):
 
 @app.route("/api/admin/cleanup", methods=["POST"])
 def api_admin_cleanup():
-    count = db.cleanup_orphan_sessions()
-    return jsonify({"ok": True, "closed": count})
+    if (request.json or {}).get("confirm") != "cleanup":
+        return jsonify({"ok": False, "error": "Stuur {confirm: 'cleanup'}"}), 400
+    closed, deleted = db.cleanup_all_unclosed()
+    return jsonify({"ok": True, "closed": closed, "deleted": deleted})
 
 
 if __name__ == "__main__":

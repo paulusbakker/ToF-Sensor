@@ -119,6 +119,15 @@
   .export-link:hover { color: var(--amber); }
 
   #empty-msg { text-align: center; padding: 30px; color: var(--muted); }
+
+  .btn-cleanup {
+    width: 100%; margin-top: 12px; padding: 11px;
+    border-radius: 10px; border: 1px solid var(--border);
+    background: #1a1008; color: var(--muted);
+    font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  .btn-cleanup:hover { color: var(--red); border-color: var(--red); }
 </style>
 </head>
 <body>
@@ -137,6 +146,7 @@
       <div id="empty-msg" style="display:none">Nog geen sessies opgeslagen.</div>
       <div id="sessions-list"></div>
     </div>
+    <button class="btn-cleanup" onclick="runCleanup()">🧹 Opruimen (niet-afgesloten sessies sluiten / lege verwijderen)</button>
   </div>
 
   <!-- Detail -->
@@ -188,6 +198,26 @@ function fmtDuration(s) {
   if (!s) return '—';
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
   return h > 0 ? `${h}u ${m}m` : `${m}m`;
+}
+
+async function runCleanup() {
+  if (!confirm('Alle niet-afgesloten sessies worden afgesloten.\nSessies zonder metingen worden verwijderd.\nDoorgaan?')) return;
+  try {
+    const r = await fetch('/api/admin/cleanup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: 'cleanup' }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert(`Klaar: ${d.closed} afgesloten, ${d.deleted} verwijderd.`);
+      await loadSessions();
+    } else {
+      alert('Fout: ' + (d.error || 'onbekend'));
+    }
+  } catch (err) {
+    alert('Fout: ' + err.message);
+  }
 }
 
 async function loadSessions() {
@@ -250,9 +280,9 @@ async function loadDetail(id) {
   if (selectedVerdict) notesEl.classList.add('visible');
   else notesEl.classList.remove('visible');
 
-  renderDetailChart(data.measurements);
   document.getElementById('list-view').style.display = 'none';
   document.getElementById('detail').style.display = 'block';
+  renderDetailChart(data.measurements);
 }
 
 function showList() {
