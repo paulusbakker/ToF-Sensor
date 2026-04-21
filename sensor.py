@@ -58,7 +58,7 @@ class VL53L1X:
         self._write(0x002D, _DEFAULT_CONFIG)
         self._write(0x005E, bytes([0x40, 0x0D, 0x03, 0x00]))
         self._write(0x0087, 0x40)
-        time.sleep(0.01)
+        time.sleep(0.5)
         print("[sensor] Continuous ranging gestart")
 
     def close(self):
@@ -72,7 +72,7 @@ class VL53L1X:
 
     def _read_once(self) -> int:
         for _ in range(100):
-            if (self._read(0x0031)[0] & 0x01) != 0:
+            if (self._read(0x0031)[0] & 0x01) == 0:
                 break
             time.sleep(0.005)
         else:
