@@ -71,7 +71,7 @@ class VL53L1X:
 
     def read_distance_mm(self) -> int:
         for _ in range(100):
-            if (self._read(0x0031)[0] & 0x01) == 0:
+            if (self._read(0x0031)[0] & 0x01) != 0:
                 break
             time.sleep(0.005)
         else:
