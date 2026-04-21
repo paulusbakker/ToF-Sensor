@@ -1,7 +1,6 @@
 # ToF Sensor – VL53L1X (Raspberry Pi)
 
-Eenvoudig testproject om de VL53L1X Time-of-Flight afstandssensor te testen op een Raspberry Pi.
-Gebruikt pure `smbus2` — geen Adafruit stack of GPIO library nodig.
+Testproject voor de VL53L1X Time-of-Flight afstandssensor op een Raspberry Pi met de Adafruit library.
 
 ## Bedrading (I2C)
 
@@ -21,25 +20,28 @@ sudo raspi-config  # → Interface Options → I2C → Enable
 # Controleer of de sensor zichtbaar is (adres 0x29)
 i2cdetect -y 1
 
-# Maak venv en installeer
-python3 -m venv venv
-source venv/bin/activate
-pip install smbus2
+# Installeer systeemafhankelijkheden
+sudo apt install swig liblgpio-dev python3-lgpio
+
+# Maak venv aan
+python3 -m venv --system-site-packages ~/myenv
+source ~/myenv/bin/activate
+pip install adafruit-circuitpython-vl53l1x
 ```
 
 ## Gebruik
 
 ```bash
-source venv/bin/activate
+source ~/myenv/bin/activate
+cd ~/tof-sensor
 python test_sensor.py
 ```
 
 Verwachte output:
 
 ```
-Chip ID: 0xEA  (verwacht: 0xEA)
-Afstand: 312 mm
-Afstand: 315 mm
+Afstand: 31.2 cm
+Afstand: 31.5 cm
 ...
 ```
 
