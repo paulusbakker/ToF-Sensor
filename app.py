@@ -54,8 +54,6 @@ def _sensor_loop():
                 no_data_streak = 0
                 while True:
                     dist, ambient = sensor.read_distance_mm()
-                    print(f"[debug] dist={dist} ambient={ambient}", flush=True)
-                    log.debug(f"ambient={ambient}")
                     if dist == -1:
                         no_data_streak += 1
                         if no_data_streak >= 5:
