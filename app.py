@@ -53,6 +53,7 @@ def _sensor_loop():
                 fridge_open = False
                 while True:
                     dist, ambient = sensor.read_distance_mm()
+                    print(f"[debug] dist={dist} ambient={ambient}", flush=True)
                     log.debug(f"ambient={ambient}")
                     if dist == -1:
                         time.sleep(config.MEASURE_INTERVAL)
