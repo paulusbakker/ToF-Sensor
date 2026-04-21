@@ -50,7 +50,7 @@ class VL53L1X:
             raise RuntimeError(f"Onverwacht chip ID: 0x{chip_id:02X} (verwacht 0xEA)")
         print(f"[sensor] Verbonden — chip ID 0x{chip_id:02X}")
         for _ in range(200):
-            if self._read(0x00FF)[0] == 0x03:
+            if self._read(0x00E5)[0] == 0x03:
                 break
             time.sleep(0.05)
         else:
