@@ -322,6 +322,10 @@
     <h1>🍞 Zuurdesem Monitor</h1>
     <div class="sub" id="conn-label">Verbinden…</div>
   </div>
+  <button class="hist-link" id="btn-stop-session"
+          onclick="stopSession()" style="display:none;background:none;border-color:var(--red);color:var(--red);cursor:pointer;">
+    ⏹ Stop sessie
+  </button>
   <a class="hist-link" href="/history">📋 Geschiedenis</a>
 </header>
 
@@ -670,10 +674,14 @@ function showOvenAlert(data) {
 function showNoSession() {
   document.getElementById('no-session').style.display = '';
   document.getElementById('session-view').style.display = 'none';
+  const b = document.getElementById('btn-stop-session');
+  if (b) b.style.display = 'none';
 }
 function showSession() {
   document.getElementById('no-session').style.display = 'none';
   document.getElementById('session-view').style.display = '';
+  const b = document.getElementById('btn-stop-session');
+  if (b) b.style.display = '';
 }
 function setText(id, val) {
   const el = document.getElementById(id);
@@ -754,7 +762,13 @@ function connect() {
       const pi = document.getElementById('preheat-min');
       if (pi) pi.value = data.preheat_min;
     }
-    else if (data.type === 'no_session') showNoSession();
+    else if (data.type === 'no_session') {
+      allPoints = []; activeSessionId = null;
+      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update('none'); }
+      if (ovenTimer) { clearInterval(ovenTimer); ovenTimer = null; }
+      setOvenState(false);
+      showNoSession();
+    }
   };
 
   evs.onerror = () => {
@@ -891,6 +905,27 @@ async function loadSettings() {
     const pi = document.getElementById('preheat-min');
     if (pi) pi.value = d.preheat_min;
   } catch { /* stil falen */ }
+}
+
+async function stopSession() {
+  if (!confirm('Huidige sessie afsluiten?')) return;
+  try {
+    const r = await fetch('/api/stop', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      allPoints = [];
+      activeSessionId = null;
+      selectedVerdict = null;
+      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
+      document.getElementById('oven-alert').classList.remove('visible');
+      document.getElementById('verdict-card').style.display = 'none';
+      if (ovenTimer) clearInterval(ovenTimer);
+      setOvenState(false);
+      showNoSession();
+    }
+  } catch (err) {
+    alert('Fout: ' + err.message);
+  }
 }
 
 async function controlOven(action) {

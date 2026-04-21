@@ -312,6 +312,22 @@ def api_session_export(session_id):
     )
 
 
+@app.route("/api/stop", methods=["POST"])
+def api_stop():
+    global _active_session, _oven_timer, _oven_on
+    unclosed = db.list_unclosed_sessions()
+    for sess in unclosed:
+        db.end_session(sess["id"])
+    with _lock:
+        _active_session = None
+        if _oven_timer:
+            _oven_timer.cancel()
+        _oven_timer = None
+        _oven_on = False
+    _broadcast({"type": "no_session"})
+    return jsonify({"ok": True, "closed": len(unclosed)})
+
+
 @app.route("/api/admin/cleanup", methods=["POST"])
 def api_admin_cleanup():
     if (request.json or {}).get("confirm") != "cleanup":
@@ -323,19 +339,12 @@ def api_admin_cleanup():
 if __name__ == "__main__":
     db.init_db()
 
-    # Sessie-herstel en opruiming bij herstart: loop langs ALLE open sessies
-    now = time.time()
-    for sess in db.list_unclosed_sessions():
-        measurements = db.get_measurements(sess["id"])
-        if not measurements or (now - measurements[-1]["ts"]) >= 86400:
-            db.end_session(sess["id"])
-            log.info(f"[main] Sessie {sess['id']} afgesloten (te oud of leeg)")
-        elif _active_session is None:
-            _active_session = sess
-            log.info(f"[main] Sessie {sess['id']} hersteld")
-        else:
-            db.end_session(sess["id"])
-            log.info(f"[main] Sessie {sess['id']} afgesloten (dubbel actief)")
+    # Sluit bij opstart alle niet-afgesloten sessies af
+    unclosed = db.list_unclosed_sessions()
+    for sess in unclosed:
+        db.end_session(sess["id"])
+    if unclosed:
+        log.info(f"[main] {len(unclosed)} open sessie(s) afgesloten bij opstart")
 
     threading.Thread(target=_sensor_loop, daemon=True).start()
     print("[main] sensor thread aangemaakt", flush=True)
