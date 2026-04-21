@@ -110,7 +110,7 @@ def _sensor_loop():
                     db.log_measurement(session["id"], dist, rise_mm, rise_pct, speed)
                     all_m   = db.get_measurements(session["id"])
                     summary = analyzer.summarize(all_m)
-                    _broadcast({"type": "measurement", "ambient": ambient, **summary})
+                    _broadcast({"type": "measurement", "ambient": ambient, "oven_on": _oven_on, **summary})
                     log.info(f"dist={dist}mm  rijs={rise_mm:.1f}mm  speed={speed:.2f}mm/u")
                     signal = analyzer.check_baking_moment(all_m)
                     if signal.triggered and _oven_timer is None and not _oven_on:
@@ -139,7 +139,7 @@ def _trigger_oven(session_id):
     if success:
         _oven_on = True
         db.mark_oven_triggered(session_id)
-    _broadcast({"type": "oven_on", "success": success})
+    _broadcast({"type": "oven_on", "success": success, "oven_on": _oven_on})
 
 
 @app.route("/")
@@ -211,13 +211,17 @@ def api_status():
         return jsonify({"session": None})
     measurements = db.get_measurements(session["id"])
     summary = analyzer.summarize(measurements)
-    return jsonify({"session": session, **summary})
+    return jsonify({"session": session, "oven_on": _oven_on, **summary})
 
 
 @app.route("/api/oven", methods=["POST"])
 def api_oven():
+    global _oven_on
     action = (request.json or {}).get("action", "on")
     ok = oven.turn_on() if action == "on" else oven.turn_off()
+    if ok:
+        _oven_on = action == "on"
+        _broadcast({"type": "oven_state", "oven_on": _oven_on})
     return jsonify({"ok": ok})
 
 
