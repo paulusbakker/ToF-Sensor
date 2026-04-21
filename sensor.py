@@ -56,6 +56,7 @@ class VL53L1X:
         else:
             raise RuntimeError("Sensor niet opgestart binnen timeout")
         self._write(0x002D, _DEFAULT_CONFIG)
+        self._write(0x005E, bytes([0x40, 0x0D, 0x03, 0x00]))
         self._write(0x0087, 0x40)
         time.sleep(0.01)
         print("[sensor] Continuous ranging gestart")
@@ -69,7 +70,7 @@ class VL53L1X:
             self._bus.close()
             self._bus = None
 
-    def read_distance_mm(self) -> int:
+    def _read_once(self) -> int:
         for _ in range(100):
             if (self._read(0x0031)[0] & 0x01) != 0:
                 break
@@ -79,6 +80,18 @@ class VL53L1X:
         data = self._read(0x0096, 2)
         self._write(0x0086, 0x01)
         return (data[0] << 8) | data[1]
+
+    def read_distance_mm(self) -> int:
+        samples = []
+        for _ in range(5):
+            v = self._read_once()
+            if v > 0:
+                samples.append(v)
+            time.sleep(0.02)
+        if not samples:
+            return -1
+        samples.sort()
+        return samples[len(samples) // 2]
 
     def __enter__(self):
         self.connect()

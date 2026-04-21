@@ -47,11 +47,19 @@ def _sensor_loop():
         while True:
             try:
                 sensor.connect()
+                prev_dist = None
+                reject_streak = 0
                 while True:
                     dist = sensor.read_distance_mm()
                     if dist < 0:
                         time.sleep(config.MEASURE_INTERVAL)
                         continue
+                    if prev_dist is not None and abs(dist - prev_dist) > 80 and reject_streak < 3:
+                        log.warning(f"[sensor] outlier verworpen: dist={dist}mm (vorige={prev_dist}mm)")
+                        reject_streak += 1
+                        continue
+                    reject_streak = 0
+                    prev_dist = dist
                     with _lock:
                         _latest_distance_mm = dist
                         session = _active_session
