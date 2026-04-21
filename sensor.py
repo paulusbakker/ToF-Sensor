@@ -1,7 +1,3 @@
-"""
-sensor.py — VL53L1X wrapper via Adafruit CircuitPython library.
-"""
-
 import time
 import board
 import busio
@@ -20,39 +16,35 @@ class VL53L1X:
         time.sleep(1.0)
         self._i2c = busio.I2C(board.SCL, board.SDA)
         self._sensor = adafruit_vl53l1x.VL53L1X(self._i2c)
-        self._sensor.distance_mode = 1
-        self._sensor.timing_budget = 50
         self._sensor.start_ranging()
-        print("[sensor] Verbonden via Adafruit library — distance_mode=Short, budget=50ms")
+        print("[sensor] Verbonden via Adafruit library")
 
     def read_distance_mm(self, samples: int = 5) -> tuple:
         distances = []
-        ambients = []
         for _ in range(samples):
-            waited = 0
+            timeout = 0
             while not self._sensor.data_ready:
-                time.sleep(0.010)
-                waited += 1
-                if waited > 100:
+                time.sleep(0.1)
+                timeout += 1
+                if timeout > 30:
                     break
             if self._sensor.data_ready:
                 raw_cm = self._sensor.distance
-                ambient = 0
                 self._sensor.clear_interrupt()
                 if raw_cm is not None and raw_cm > 0:
                     distances.append(round(raw_cm * 10))
-                ambients.append(int(ambient) if ambient is not None else 0)
-            time.sleep(0.02)
-        ambient_avg = round(sum(ambients) / len(ambients)) if ambients else 0
+            time.sleep(0.1)
+
         if not distances:
-            return (-1, ambient_avg)
+            return (-1, 0)
+
         mean = sum(distances) / len(distances)
         std_dev = (sum((d - mean) ** 2 for d in distances) / len(distances)) ** 0.5
         if std_dev > 15:
-            return (-2, ambient_avg)
+            return (-2, 0)
+
         distances.sort()
-        median = distances[len(distances) // 2]
-        return (median, ambient_avg)
+        return (distances[len(distances) // 2], 0)
 
     def close(self):
         self._safe_close()
