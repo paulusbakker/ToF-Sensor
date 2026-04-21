@@ -56,6 +56,7 @@ class VL53L1X:
         else:
             raise RuntimeError("Sensor niet opgestart binnen timeout")
         self._write(0x002D, _DEFAULT_CONFIG)
+        self._write(0x005E, bytes([0x40, 0x0D, 0x03, 0x00]))
         self._write(0x0087, 0x40)
         time.sleep(0.5)
         print("[sensor] Continuous ranging gestart")
@@ -70,23 +71,15 @@ class VL53L1X:
             self._bus = None
 
     def _read_once(self) -> int:
-        val = 0xFF
-        fired_at = -1
-        for i in range(100):
-            val = self._read(0x0031)[0]
-            if (val & 0x01) == 0:
-                fired_at = i
+        for _ in range(100):
+            if (self._read(0x0031)[0] & 0x01) != 0:
                 break
             time.sleep(0.005)
         else:
-            print(f"[sensor] _read_once timeout na 100 iter, 0x0031=0x{val:02X}", flush=True)
             return -1
-        status = self._read(0x0089)[0]
-        data   = self._read(0x0096, 2)
+        data = self._read(0x0096, 2)
         self._write(0x0086, 0x01)
-        dist = (data[0] << 8) | data[1]
-        print(f"[sensor] _read_once: iter={fired_at} 0x0031=0x{val:02X} status=0x{status:02X} dist={dist}", flush=True)
-        return dist
+        return (data[0] << 8) | data[1]
 
     def read_ambient(self) -> int:
         data = self._read(0x0090, 2)
