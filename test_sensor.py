@@ -42,7 +42,7 @@ with SMBus(BUS) as bus:
     chip_id = read_reg(bus, 0x010F)[0]
     print(f"Chip ID: 0x{chip_id:02X}  (verwacht: 0xEA)")
 
-    for _ in range(100):
+    for _ in range(500):
         if read_reg(bus, 0x00FF)[0] == 0x03:
             break
         time.sleep(0.01)
