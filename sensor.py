@@ -56,6 +56,7 @@ class VL53L1X:
         else:
             raise RuntimeError("Sensor niet opgestart binnen timeout")
         self._write(0x002D, _DEFAULT_CONFIG)
+        self._write(0x005E, bytes([0x40, 0x0D, 0x03, 0x00]))
         self._write(0x0087, 0x40)
         time.sleep(0.01)
         print("[sensor] Continuous ranging gestart")
@@ -69,9 +70,9 @@ class VL53L1X:
             self._bus.close()
             self._bus = None
 
-    def read_distance_mm(self) -> int:
+    def _read_once(self) -> int:
         for _ in range(100):
-            if (self._read(0x0031)[0] & 0x01) == 0:
+            if (self._read(0x0031)[0] & 0x01) != 0:
                 break
             time.sleep(0.005)
         else:
@@ -79,6 +80,32 @@ class VL53L1X:
         data = self._read(0x0096, 2)
         self._write(0x0086, 0x01)
         return (data[0] << 8) | data[1]
+
+    def read_ambient(self) -> int:
+        data = self._read(0x0090, 2)
+        return (data[0] << 8) | data[1]
+
+    def read_distance_mm(self) -> tuple:
+        dist_samples = []
+        amb_samples = []
+        for _ in range(5):
+            v = self._read_once()
+            a = self.read_ambient()
+            if v > 0:
+                dist_samples.append(v)
+            amb_samples.append(a)
+            time.sleep(0.02)
+        avg_ambient = int(sum(amb_samples) / len(amb_samples)) if amb_samples else 0
+        if not dist_samples:
+            return (-1, avg_ambient)
+        if len(dist_samples) >= 2:
+            mean = sum(dist_samples) / len(dist_samples)
+            variance = sum((x - mean) ** 2 for x in dist_samples) / len(dist_samples)
+            stdev = variance ** 0.5
+            if stdev > 15:
+                return (-2, avg_ambient)
+        dist_samples.sort()
+        return (dist_samples[len(dist_samples) // 2], avg_ambient)
 
     def __enter__(self):
         self.connect()

@@ -183,6 +183,23 @@
   }
   #no-session h2 { font-size: 1.1rem; margin-bottom: 8px; }
   #no-session p  { font-size: 0.85rem; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+
+  /* ── Ambient bar ── */
+  .ambient-track {
+    flex: 1;
+    background: #1a1008;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    height: 12px;
+    overflow: hidden;
+  }
+  #ambient-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--green);
+    border-radius: 6px;
+    transition: width .4s, background .4s;
+  }
 </style>
 </head>
 <body>
@@ -214,6 +231,20 @@
         <div class="label" id="status-label">…</div>
         <div class="badge" id="dist-badge">—</div>
       </div>
+    </div>
+
+    <!-- Lichtsensor -->
+    <div class="card" id="ambient-card">
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:10px;font-weight:600;">LICHTSENSOR</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="ambient-track">
+          <div id="ambient-bar"></div>
+        </div>
+        <div style="font-size:0.8rem;color:var(--cream);white-space:nowrap;">
+          <span id="ambient-value">—</span> / 1500 <span style="color:var(--muted)">(drempel: 800)</span>
+        </div>
+      </div>
+      <div id="ambient-status" style="font-size:0.78rem;color:var(--green);margin-top:8px;">✓ Normaal</div>
     </div>
 
     <!-- Getallen -->
@@ -453,6 +484,31 @@ function setText(id, val) {
   if (el) el.textContent = val;
 }
 
+function updateAmbient(ambient) {
+  if (ambient == null) return;
+  const pct = Math.min(ambient / 1500 * 100, 100);
+  const bar    = document.getElementById('ambient-bar');
+  const valEl  = document.getElementById('ambient-value');
+  const status = document.getElementById('ambient-status');
+  if (bar) {
+    bar.style.width = pct + '%';
+    bar.style.background = ambient > 1200 ? 'var(--red)' : ambient > 800 ? 'var(--amber)' : 'var(--green)';
+  }
+  if (valEl) valEl.textContent = ambient;
+  if (status) {
+    if (ambient > 1200) {
+      status.style.color = 'var(--red)';
+      status.textContent = '✗ Koelkast open — meting gepauzeerd';
+    } else if (ambient > 800) {
+      status.style.color = 'var(--amber)';
+      status.textContent = '⚠ Licht gedetecteerd';
+    } else {
+      status.style.color = 'var(--green)';
+      status.textContent = '✓ Normaal';
+    }
+  }
+}
+
 // ── SSE ───────────────────────────────────────────────────
 function connect() {
   const evs = new EventSource('/stream');
@@ -468,12 +524,21 @@ function connect() {
     try { data = JSON.parse(e.data); } catch { return; }
 
     if (data.type === 'history')      applyHistory(data);
-    else if (data.type === 'measurement') addPoint(data);
+    else if (data.type === 'measurement') { addPoint(data); updateAmbient(data.ambient); }
     else if (data.type === 'oven_scheduled') showOvenAlert(data);
     else if (data.type === 'oven_on') {
       const el = document.getElementById('oven-alert');
       el.style.background = 'linear-gradient(135deg, #14532d, #052e16)';
       setText('oven-countdown', data.success ? '✅ Oven is aan!' : '⚠️ Kon oven niet aanzetten');
+    }
+    else if (data.type === 'fridge_open') {
+      updateAmbient(data.ambient);
+      const status = document.getElementById('ambient-status');
+      if (status) { status.style.color = 'var(--red)'; status.textContent = '✗ Koelkast open — meting gepauzeerd'; }
+    }
+    else if (data.type === 'fridge_closed') {
+      const status = document.getElementById('ambient-status');
+      if (status) { status.style.color = 'var(--green)'; status.textContent = '✓ Normaal — 60s stabilisatie…'; }
     }
     else if (data.type === 'no_session') showNoSession();
   };

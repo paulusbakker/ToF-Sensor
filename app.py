@@ -3,6 +3,7 @@ import logging
 import queue
 import threading
 import time
+import traceback
 
 from flask import Flask, Response, jsonify, render_template, request
 
@@ -23,6 +24,8 @@ _oven_on = False
 _sse_clients = []
 _latest_distance_mm = None
 
+AMBIENT_THRESHOLD = 800
+
 
 def _broadcast(payload: dict):
     msg = f"data: {json.dumps(payload)}\n\n"
@@ -39,50 +42,86 @@ def _broadcast(payload: dict):
 
 def _sensor_loop():
     global _oven_timer, _oven_on, _latest_distance_mm
-    from sensor import VL53L1X
-    sensor = VL53L1X()
-    while True:
-        try:
-            sensor.connect()
-            while True:
-                dist = sensor.read_distance_mm()
-                if dist < 0:
-                    time.sleep(config.MEASURE_INTERVAL)
-                    continue
-                with _lock:
-                    _latest_distance_mm = dist
-                    session = _active_session
-                if session is None:
-                    time.sleep(5)
-                    continue
-                baseline = session["baseline_mm"]
-                rise_mm  = analyzer.compute_rise(dist, baseline)
-                rise_pct = analyzer.compute_rise_pct(rise_mm, baseline)
-                recent   = db.get_last_n(session["id"], n=20)
-                dummy    = recent + [{"ts": time.time(), "rise_mm": rise_mm,
-                                      "rise_pct": rise_pct, "distance_mm": dist,
-                                      "speed_mm_h": 0}]
-                speed = analyzer.compute_speed(dummy)[-1]
-                db.log_measurement(session["id"], dist, rise_mm, rise_pct, speed)
-                all_m   = db.get_measurements(session["id"])
-                summary = analyzer.summarize(all_m)
-                _broadcast({"type": "measurement", **summary})
-                log.info(f"dist={dist}mm  rijs={rise_mm:.1f}mm  speed={speed:.2f}mm/u")
-                signal = analyzer.check_baking_moment(all_m)
-                if signal.triggered and _oven_timer is None and not _oven_on:
-                    delay_s = config.OVEN_PREHEAT_MIN * 60
-                    _oven_timer = threading.Timer(delay_s, _trigger_oven, args=[session["id"]])
-                    _oven_timer.start()
-                    _broadcast({"type": "oven_scheduled", "minutes": config.OVEN_PREHEAT_MIN,
-                                "reason": signal.reason})
-                time.sleep(config.MEASURE_INTERVAL)
-        except Exception as e:
-            log.error(f"[sensor] {e} — herverbinden in 10s")
+    print("[sensor_loop] thread gestart", flush=True)
+    try:
+        from sensor import VL53L1X
+        sensor = VL53L1X()
+        while True:
             try:
-                sensor.close()
-            except Exception:
-                pass
-            time.sleep(10)
+                sensor.connect()
+                prev_dist = None
+                reject_streak = 0
+                fridge_open = False
+                while True:
+                    dist, ambient = sensor.read_distance_mm()
+                    log.debug(f"[sensor] ambient={ambient}")
+                    if dist == -1:
+                        time.sleep(config.MEASURE_INTERVAL)
+                        continue
+                    if dist == -2:
+                        log.warning(f"[sensor] hoge spreiding in batch (ambient={ambient})")
+                        reject_streak += 1
+                    elif ambient > AMBIENT_THRESHOLD:
+                        log.warning(f"[sensor] licht gedetecteerd: ambient={ambient}")
+                        _broadcast({"type": "fridge_open", "ambient": ambient})
+                        reject_streak += 1
+                    elif prev_dist is not None and abs(dist - prev_dist) > 80:
+                        log.warning(f"[sensor] outlier verworpen: dist={dist}mm (vorige={prev_dist}mm)")
+                        reject_streak += 1
+                    else:
+                        if fridge_open:
+                            log.info("[sensor] koelkast dicht — wacht op stabilisatie")
+                            _broadcast({"type": "fridge_closed"})
+                            time.sleep(60)
+                            fridge_open = False
+                            prev_dist = None
+                            reject_streak = 0
+                            continue
+                        reject_streak = 0
+                        prev_dist = dist
+                        with _lock:
+                            _latest_distance_mm = dist
+                            session = _active_session
+                        if session is None:
+                            time.sleep(5)
+                            continue
+                        baseline = session["baseline_mm"]
+                        rise_mm  = analyzer.compute_rise(dist, baseline)
+                        rise_pct = analyzer.compute_rise_pct(rise_mm, baseline)
+                        recent   = db.get_last_n(session["id"], n=20)
+                        dummy    = recent + [{"ts": time.time(), "rise_mm": rise_mm,
+                                              "rise_pct": rise_pct, "distance_mm": dist,
+                                              "speed_mm_h": 0}]
+                        speed = analyzer.compute_speed(dummy)[-1]
+                        db.log_measurement(session["id"], dist, rise_mm, rise_pct, speed)
+                        all_m   = db.get_measurements(session["id"])
+                        summary = analyzer.summarize(all_m)
+                        _broadcast({"type": "measurement", **summary, "ambient": ambient})
+                        log.info(f"dist={dist}mm  rijs={rise_mm:.1f}mm  speed={speed:.2f}mm/u")
+                        signal = analyzer.check_baking_moment(all_m)
+                        if signal.triggered and _oven_timer is None and not _oven_on:
+                            delay_s = config.OVEN_PREHEAT_MIN * 60
+                            _oven_timer = threading.Timer(delay_s, _trigger_oven, args=[session["id"]])
+                            _oven_timer.start()
+                            _broadcast({"type": "oven_scheduled", "minutes": config.OVEN_PREHEAT_MIN,
+                                        "reason": signal.reason})
+                        time.sleep(config.MEASURE_INTERVAL)
+                        continue
+                    if reject_streak >= 4 and not fridge_open:
+                        log.warning("[sensor] koelkast open gedetecteerd")
+                        fridge_open = True
+                    time.sleep(config.MEASURE_INTERVAL)
+            except Exception as e:
+                log.error(f"[sensor] {e} — herverbinden in 10s")
+                traceback.print_exc()
+                try:
+                    sensor.close()
+                except Exception:
+                    pass
+                time.sleep(10)
+    except Exception:
+        print("[sensor_loop] fatale fout, thread stopt:", flush=True)
+        traceback.print_exc()
 
 
 def _trigger_oven(session_id):
@@ -185,5 +224,6 @@ def api_history():
 if __name__ == "__main__":
     db.init_db()
     threading.Thread(target=_sensor_loop, daemon=True).start()
+    print("[main] sensor thread aangemaakt", flush=True)
     log.info(f"Dashboard: http://0.0.0.0:{config.FLASK_PORT}")
     app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, threaded=True, debug=False)
