@@ -164,7 +164,7 @@
   .btn-oven.active { box-shadow: 0 0 14px var(--orange); }
   .btn-stop.active { box-shadow: 0 0 10px #60a5fa; }
   .oven-status-dot {
-    width: 10px; height: 10px; border-radius: 50%;
+    width: 12px; height: 12px; border-radius: 50%;
     background: var(--muted);
     flex-shrink: 0;
     transition: background .3s;
@@ -290,7 +290,7 @@
       <div style="font-size:.8rem;color:var(--muted);margin-bottom:6px;font-weight:600;">OVEN BESTURING</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <div class="oven-status-dot" id="oven-dot"></div>
-        <span style="font-size:.8rem;color:var(--muted);" id="oven-label">Uit</span>
+        <span style="font-size:.9rem;color:var(--muted);" id="oven-label">Uit</span>
       </div>
       <div class="oven-section">
         <button class="btn btn-oven" id="btn-oven-on"  onclick="controlOven('on')">🔥 Oven AAN</button>
@@ -604,12 +604,12 @@ function setOvenState(on) {
     btnOn.classList.add('active');
     btnOff.classList.remove('active');
     if (dot)   dot.classList.add('on');
-    if (label) label.textContent = 'Aan';
+    if (label) { label.textContent = '🔥 AAN'; label.style.color = 'var(--orange)'; label.style.fontWeight = '700'; }
   } else {
     btnOn.classList.remove('active');
     btnOff.classList.add('active');
     if (dot)   dot.classList.remove('on');
-    if (label) label.textContent = 'Uit';
+    if (label) { label.textContent = 'Uit'; label.style.color = 'var(--muted)'; label.style.fontWeight = ''; }
   }
 }
 
