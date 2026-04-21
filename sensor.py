@@ -37,7 +37,7 @@ class VL53L1X:
                     break
             if self._sensor.data_ready:
                 raw_cm = self._sensor.distance
-                ambient = self._sensor.ambient_count
+                ambient = 0
                 self._sensor.clear_interrupt()
                 if raw_cm is not None and raw_cm > 0:
                     distances.append(round(raw_cm * 10))
