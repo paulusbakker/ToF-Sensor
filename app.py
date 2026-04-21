@@ -1,32 +1,16 @@
-import sys
-print("[app] laden gestart", flush=True)
-
 import json
-print("[app] json ok", flush=True)
 import logging
-print("[app] logging ok", flush=True)
 import queue
-print("[app] queue ok", flush=True)
 import threading
-print("[app] threading ok", flush=True)
 import time
-print("[app] time ok", flush=True)
 import traceback
-print("[app] traceback ok", flush=True)
 
 from flask import Flask, Response, jsonify, render_template, request
-print("[app] flask ok", flush=True)
 
 import analyzer
-print("[app] analyzer ok", flush=True)
 import config
-print("[app] config ok", flush=True)
 import db
-print("[app] db ok", flush=True)
 import oven
-print("[app] oven ok", flush=True)
-
-print("[app] imports klaar", flush=True)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
