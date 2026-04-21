@@ -37,7 +37,13 @@ class VL53L1X:
         return bytes(r)
 
     def connect(self):
-        time.sleep(0.5)
+        if self._bus is not None:
+            try:
+                self._bus.close()
+            except Exception:
+                pass
+            self._bus = None
+        time.sleep(1.0)
         self._bus = SMBus(config.I2C_BUS)
         chip_id = self._read(0x010F)[0]
         if chip_id != 0xEA:
