@@ -1,0 +1,13 @@
+[Unit]
+Description=Zuurdesem Monitor
+After=network.target
+
+[Service]
+WorkingDirectory=/home/hallulla/tof-sensor
+ExecStart=/home/hallulla/myenv/bin/python app.py
+Restart=on-failure
+RestartSec=10
+User=hallulla
+
+[Install]
+WantedBy=multi-user.target
