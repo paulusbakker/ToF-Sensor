@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a1008">
+<title>🍞 Zuurdesem Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  :root {
+    --bg:       #1a1008;
+    --card:     #2a1e0e;
+    --border:   #4a3520;
+    --amber:    #f59e0b;
+    --orange:   #f97316;
+    --cream:    #fef3c7;
+    --muted:    #92816a;
+    --green:    #4ade80;
+    --red:      #f87171;
+    --blue:     #60a5fa;
+    --radius:   14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--cream);
+    min-height: 100vh;
+    padding: 0 0 40px;
+  }
+
+  header {
+    background: linear-gradient(135deg, #3d2408, #1a1008);
+    padding: 18px 20px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { font-size: 1.2rem; font-weight: 700; letter-spacing: 0.3px; }
+  header .sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+  .dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+  .dot.warn { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: pulse 1s infinite; }
+  .dot.fire { background: var(--red);   box-shadow: 0 0 8px var(--red);   animation: pulse .5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  main { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+
+  /* ── Status banner ── */
+  .status-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .status-banner .label { flex: 1; }
+  .status-banner .badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: #ffffff18;
+    color: var(--muted);
+  }
+
+  /* ── Big numbers ── */
+  .metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .metric {
+    background: #1a1008;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 12px;
+    text-align: center;
+  }
+  .metric .value {
+    font-size: 2.2rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--amber);
+  }
+  .metric .value.speed { font-size: 1.6rem; color: var(--blue); }
+  .metric .unit { font-size: 0.7rem; color: var(--muted); margin-top: 4px; }
+  .metric .label { font-size: 0.75rem; color: var(--cream); margin-top: 6px; opacity: 0.7; }
+
+  /* ── Alert banner ── */
+  .alert {
+    display: none;
+    background: linear-gradient(135deg, #7c2d12, #431407);
+    border: 1px solid #ea580c;
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .alert.visible { display: block; }
+  .alert .countdown { font-size: 1.3rem; font-weight: 800; color: var(--orange); margin-top: 4px; }
+
+  /* ── Chart ── */
+  .chart-wrap { position: relative; height: 220px; }
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .chart-header h2 { font-size: 0.85rem; font-weight: 600; opacity: 0.7; }
+  .chart-header select {
+    background: #1a1008;
+    border: 1px solid var(--border);
+    color: var(--cream);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 0.75rem;
+  }
+
+  /* ── Oven control ── */
+  .oven-section { display: flex; gap: 10px; }
+  .btn {
+    flex: 1;
+    padding: 13px;
+    border-radius: 10px;
+    border: none;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-start  { background: var(--amber); color: #1a1008; }
+  .btn-oven   { background: var(--orange); color: #1a1008; }
+  .btn-stop   { background: #374151; color: var(--cream); }
+  .btn:disabled { opacity: .4; cursor: default; }
+
+  .btn-start { width: 100%; margin-top: 4px; }
+
+  /* ── Last update ── */
+  .last-update {
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── Debug / signal ── */
+  .signal-text {
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 8px;
+    min-height: 1.2em;
+  }
+
+  /* ── No session state ── */
+  #no-session {
+    text-align: center;
+    padding: 30px 20px;
+  }
+  #no-session h2 { font-size: 1.1rem; margin-bottom: 8px; }
+  #no-session p  { font-size: 0.85rem; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="dot" id="conn-dot"></div>
+  <div>
+    <h1>🍞 Zuurdesem Monitor</h1>
+    <div class="sub" id="conn-label">Verbinden…</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Geen sessie -->
+  <div id="no-session" class="card" style="display:none">
+    <h2>Nog geen meting actief</h2>
+    <p>Plaats de sensor boven het deeg en druk op<br><strong>Meting starten</strong> om te beginnen.</p>
+    <button class="btn btn-start" onclick="startSession()">▶ Meting starten</button>
+  </div>
+
+  <!-- Actieve sessie -->
+  <div id="session-view" style="display:none">
+
+    <!-- Status -->
+    <div class="card">
+      <div class="status-banner">
+        <div class="dot" id="status-dot"></div>
+        <div class="label" id="status-label">…</div>
+        <div class="badge" id="dist-badge">—</div>
+      </div>
+    </div>
+
+    <!-- Getallen -->
+    <div class="metrics">
+      <div class="metric">
+        <div class="value" id="rise-mm">—</div>
+        <div class="unit">mm gestegen</div>
+        <div class="label">Rijs (absoluut)</div>
+      </div>
+      <div class="metric">
+        <div class="value" id="rise-pct">—</div>
+        <div class="unit">% gerezen</div>
+        <div class="label">Rijspercentage</div>
+      </div>
+      <div class="metric" style="grid-column:1/-1">
+        <div class="value speed" id="speed">—</div>
+        <div class="unit">mm/uur</div>
+        <div class="label">Rijssnelheid</div>
+      </div>
+    </div>
+
+    <!-- Alert: oven gepland -->
+    <div class="alert" id="oven-alert">
+      🔥 Bakmoment nadert!<br>
+      <span id="alert-reason"></span>
+      <div class="countdown" id="oven-countdown"></div>
+    </div>
+
+    <!-- Grafiek -->
+    <div class="card">
+      <div class="chart-header">
+        <h2>Rijsverloop</h2>
+        <select id="time-range" onchange="updateChart()">
+          <option value="60">1 uur</option>
+          <option value="120" selected>2 uur</option>
+          <option value="360">6 uur</option>
+          <option value="720">12 uur</option>
+          <option value="0">Alles</option>
+        </select>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="riseChart"></canvas>
+      </div>
+    </div>
+
+    <div class="signal-text" id="signal-text"></div>
+
+    <!-- Oven besturing -->
+    <div class="card">
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:10px;font-weight:600;">OVEN BESTURING</div>
+      <div class="oven-section">
+        <button class="btn btn-oven" id="btn-oven-on"  onclick="controlOven('on')">🔥 Oven AAN</button>
+        <button class="btn btn-stop" id="btn-oven-off" onclick="controlOven('off')">⏹ Oven UIT</button>
+      </div>
+    </div>
+
+    <!-- Reset -->
+    <button class="btn btn-start" onclick="startSession()">🔄 Nieuwe meting starten</button>
+
+    <div class="last-update" id="last-update"></div>
+
+  </div>
+</main>
+
+<script>
+// ── State ─────────────────────────────────────────────────
+let allPoints   = [];   // {ts, rise_mm, rise_pct, speed_mm_h}
+let ovenTimer   = null; // countdown interval
+let chart       = null;
+
+// ── Chart init ────────────────────────────────────────────
+function initChart() {
+  const ctx = document.getElementById('riseChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: 'Rijs (mm)',
+          data: [],
+          borderColor:     '#f59e0b',
+          backgroundColor: 'rgba(245,158,11,0.12)',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Snelheid (mm/u)',
+          data: [],
+          borderColor:     '#60a5fa',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.4,
+          borderDash: [4, 3],
+          yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          type: 'time',
+          time: { tooltipFormat: 'HH:mm', displayFormats: { minute: 'HH:mm', hour: 'HH:mm' } },
+          grid:  { color: '#ffffff0a' },
+          ticks: { color: '#92816a', maxTicksLimit: 5, font: { size: 10 } },
+        },
+        y: {
+          position: 'left',
+          title: { display: false },
+          grid:  { color: '#ffffff0a' },
+          ticks: { color: '#f59e0b', font: { size: 10 },
+                   callback: v => v + ' mm' },
+        },
+        y2: {
+          position: 'right',
+          grid: { display: false },
+          ticks: { color: '#60a5fa', font: { size: 10 },
+                   callback: v => v + ' mm/u' },
+        }
+      },
+      plugins: {
+        legend: {
+          labels: { color: '#92816a', font: { size: 11 }, boxWidth: 14 }
+        },
+        tooltip: {
+          backgroundColor: '#2a1e0e',
+          borderColor: '#4a3520',
+          borderWidth: 1,
+          titleColor: '#fef3c7',
+          bodyColor: '#92816a',
+        }
+      }
+    }
+  });
+}
+
+function updateChart() {
+  if (!chart) return;
+  const minutes = parseInt(document.getElementById('time-range').value) || 0;
+  const cutoff  = minutes ? (Date.now() / 1000 - minutes * 60) : 0;
+  const pts     = minutes ? allPoints.filter(p => p.ts >= cutoff) : allPoints;
+
+  chart.data.datasets[0].data = pts.map(p => ({ x: p.ts * 1000, y: p.rise_mm  || 0 }));
+  chart.data.datasets[1].data = pts.map(p => ({ x: p.ts * 1000, y: Math.max(0, p.speed_mm_h || 0) }));
+  chart.update('none');
+}
+
+// ── UI updates ────────────────────────────────────────────
+const statusColors = {
+  waiting:  '',
+  rising:   'live',
+  slowing:  'warn',
+  baking:   'fire',
+};
+
+function applyData(d) {
+  if (d.type === 'no_session') {
+    showNoSession(); return;
+  }
+
+  showSession();
+
+  // Metrics
+  setText('rise-mm',  d.rise_mm  != null ? d.rise_mm.toFixed(1)  : '—');
+  setText('rise-pct', d.rise_pct != null ? d.rise_pct.toFixed(0) + '%' : '—');
+  setText('speed',    d.speed_mm_h != null ? d.speed_mm_h.toFixed(2) : '—');
+  setText('dist-badge', d.distance_mm ? d.distance_mm + ' mm sensor' : '');
+  setText('status-label', d.status_label || '');
+  setText('signal-text',  d.signal_reason || '');
+
+  // Status dot
+  const dot = document.getElementById('status-dot');
+  dot.className = 'dot ' + (statusColors[d.status] || '');
+
+  // Tijdstip
+  if (d.ts) {
+    const t = new Date(d.ts * 1000);
+    setText('last-update', 'Laatste meting: ' + t.toLocaleTimeString('nl-NL'));
+  }
+}
+
+function applyHistory(data) {
+  if (data.points) allPoints = data.points;
+  applyData(data);
+  updateChart();
+}
+
+function addPoint(d) {
+  if (d.ts) {
+    allPoints.push({
+      ts: d.ts,
+      rise_mm:    d.rise_mm,
+      rise_pct:   d.rise_pct,
+      speed_mm_h: d.speed_mm_h,
+    });
+  }
+  applyData(d);
+  updateChart();
+}
+
+function showOvenAlert(data) {
+  const el = document.getElementById('oven-alert');
+  el.classList.add('visible');
+  setText('alert-reason', data.reason || '');
+
+  let secsLeft = data.minutes * 60;
+  if (ovenTimer) clearInterval(ovenTimer);
+  ovenTimer = setInterval(() => {
+    secsLeft--;
+    if (secsLeft <= 0) {
+      clearInterval(ovenTimer);
+      setText('oven-countdown', '🔥 Oven aan!');
+    } else {
+      const m = Math.floor(secsLeft / 60), s = secsLeft % 60;
+      setText('oven-countdown', `Oven aan over ${m}:${s.toString().padStart(2,'0')}`);
+    }
+  }, 1000);
+}
+
+function showNoSession() {
+  document.getElementById('no-session').style.display = '';
+  document.getElementById('session-view').style.display = 'none';
+}
+function showSession() {
+  document.getElementById('no-session').style.display = 'none';
+  document.getElementById('session-view').style.display = '';
+}
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+// ── SSE ───────────────────────────────────────────────────
+function connect() {
+  const evs = new EventSource('/stream');
+
+  evs.onopen = () => {
+    const dot = document.getElementById('conn-dot');
+    dot.className = 'dot live';
+    setText('conn-label', 'Verbonden');
+  };
+
+  evs.onmessage = (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+
+    if (data.type === 'history')      applyHistory(data);
+    else if (data.type === 'measurement') addPoint(data);
+    else if (data.type === 'oven_scheduled') showOvenAlert(data);
+    else if (data.type === 'oven_on') {
+      const el = document.getElementById('oven-alert');
+      el.style.background = 'linear-gradient(135deg, #14532d, #052e16)';
+      setText('oven-countdown', data.success ? '✅ Oven is aan!' : '⚠️ Kon oven niet aanzetten');
+    }
+    else if (data.type === 'no_session') showNoSession();
+  };
+
+  evs.onerror = () => {
+    document.getElementById('conn-dot').className = 'dot';
+    setText('conn-label', 'Verbinding verbroken — herverbinden…');
+    evs.close();
+    setTimeout(connect, 3000);
+  };
+}
+
+// ── API calls ─────────────────────────────────────────────
+async function startSession() {
+  const notes = '';   // eventueel dialog voor notitie
+  try {
+    const r = await fetch('/api/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({notes})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      allPoints = [];
+      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
+      document.getElementById('oven-alert').classList.remove('visible');
+      if (ovenTimer) clearInterval(ovenTimer);
+      showSession();
+    } else {
+      alert('Kon sessie niet starten: ' + (d.error || 'onbekende fout'));
+    }
+  } catch (err) {
+    alert('Fout: ' + err.message);
+  }
+}
+
+async function controlOven(action) {
+  try {
+    const r = await fetch('/api/oven', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action})
+    });
+    const d = await r.json();
+    if (!d.ok) alert('Oven commando mislukt');
+  } catch (err) {
+    alert('Fout: ' + err.message);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────
+initChart();
+connect();
+
+// Check status bij laden
+fetch('/api/status').then(r => r.json()).then(d => {
+  if (!d.session) showNoSession();
+});
+</script>
+</body>
+</html>
