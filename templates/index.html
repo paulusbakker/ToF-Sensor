@@ -290,7 +290,7 @@
       <div style="font-size:.8rem;color:var(--muted);margin-bottom:6px;font-weight:600;">OVEN BESTURING</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <div class="oven-status-dot" id="oven-dot"></div>
-        <span style="font-size:.9rem;color:var(--muted);" id="oven-label">Uit</span>
+        <span style="font-size:1rem;color:var(--cream);" id="oven-label">⏹ Oven is Uit</span>
       </div>
       <div class="oven-section">
         <button class="btn btn-oven" id="btn-oven-on"  onclick="controlOven('on')">🔥 Oven AAN</button>
@@ -601,15 +601,15 @@ function setOvenState(on) {
   const dot    = document.getElementById('oven-dot');
   const label  = document.getElementById('oven-label');
   if (on) {
-    btnOn.classList.add('active');
-    btnOff.classList.remove('active');
+    if (btnOn) btnOn.classList.add('active');
+    if (btnOff) btnOff.classList.remove('active');
     if (dot)   dot.classList.add('on');
-    if (label) { label.textContent = '🔥 AAN'; label.style.color = 'var(--orange)'; label.style.fontWeight = '700'; }
+    if (label) { label.textContent = '🔥 Oven is AAN'; label.style.color = 'var(--orange)'; label.style.fontWeight = '700'; }
   } else {
-    btnOn.classList.remove('active');
-    btnOff.classList.add('active');
+    if (btnOn) btnOn.classList.remove('active');
+    if (btnOff) btnOff.classList.add('active');
     if (dot)   dot.classList.remove('on');
-    if (label) { label.textContent = 'Uit'; label.style.color = 'var(--muted)'; label.style.fontWeight = ''; }
+    if (label) { label.textContent = '⏹ Oven is Uit'; label.style.color = 'var(--cream)'; label.style.fontWeight = ''; }
   }
 }
 
