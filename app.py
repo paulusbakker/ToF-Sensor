@@ -51,13 +51,18 @@ def _sensor_loop():
                 prev_dist = None
                 reject_streak = 0
                 fridge_open = False
+                no_data_streak = 0
                 while True:
                     dist, ambient = sensor.read_distance_mm()
                     print(f"[debug] dist={dist} ambient={ambient}", flush=True)
                     log.debug(f"ambient={ambient}")
                     if dist == -1:
+                        no_data_streak += 1
+                        if no_data_streak >= 5:
+                            raise RuntimeError(f"Sensor {no_data_streak}x geen data — herverbinden")
                         time.sleep(config.MEASURE_INTERVAL)
                         continue
+                    no_data_streak = 0
                     if dist == -2:
                         log.warning("[sensor] hoge spreiding")
                         reject_streak += 1
