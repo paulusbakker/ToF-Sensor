@@ -47,14 +47,13 @@ def _sensor_loop():
         while True:
             try:
                 sensor.connect()
-                AMBIENT_THRESHOLD = 800
+                AMBIENT_THRESHOLD = 10
                 prev_dist = None
                 reject_streak = 0
                 fridge_open = False
                 no_data_streak = 0
                 while True:
                     dist, ambient = sensor.read_distance_mm()
-                    print(f"[debug] dist={dist} ambient={ambient}", flush=True)
                     if dist == -1:
                         no_data_streak += 1
                         if no_data_streak >= 5:
