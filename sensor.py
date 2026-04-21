@@ -56,7 +56,6 @@ class VL53L1X:
         else:
             raise RuntimeError("Sensor niet opgestart binnen timeout")
         self._write(0x002D, _DEFAULT_CONFIG)
-        self._write(0x005E, bytes([0x40, 0x0D, 0x03, 0x00]))
         self._write(0x0087, 0x40)
         time.sleep(0.5)
         print("[sensor] Continuous ranging gestart")
