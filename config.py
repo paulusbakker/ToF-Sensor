@@ -15,10 +15,10 @@ PEAK_SPEED_RATIO  = 0.30       # snelheid < 30% van piek → bijna klaar
 # Stap 1: pip install tinytuya
 # Stap 2: python -m tinytuya wizard   → volg de stappen
 # Stap 3: vul onderstaande waarden in
-TUYA_ENABLED   = False          # zet True zodra je de sleutels hebt
-TUYA_DEVICE_ID = "YOUR_DEVICE_ID"
-TUYA_LOCAL_KEY = "YOUR_LOCAL_KEY"
-TUYA_IP        = "192.168.1.x"
+TUYA_ENABLED   = True
+TUYA_DEVICE_ID = "30713841c4dd57240ba9"
+TUYA_LOCAL_KEY = "74dbf028808a88ee"
+TUYA_IP        = "192.168.2.1"
 TUYA_VERSION   = 3.3
 
 # ─── Web ──────────────────────────────────────────────────
