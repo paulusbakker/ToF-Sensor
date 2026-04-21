@@ -37,16 +37,16 @@ class VL53L1X:
         return bytes(r)
 
     def connect(self):
-        time.sleep(0.1)
+        time.sleep(0.5)
         self._bus = SMBus(config.I2C_BUS)
         chip_id = self._read(0x010F)[0]
         if chip_id != 0xEA:
             raise RuntimeError(f"Onverwacht chip ID: 0x{chip_id:02X} (verwacht 0xEA)")
         print(f"[sensor] Verbonden — chip ID 0x{chip_id:02X}")
-        for _ in range(100):
+        for _ in range(200):
             if self._read(0x00FF)[0] == 0x03:
                 break
-            time.sleep(0.01)
+            time.sleep(0.05)
         else:
             raise RuntimeError("Sensor niet opgestart binnen timeout")
         self._write(0x002D, _DEFAULT_CONFIG)
