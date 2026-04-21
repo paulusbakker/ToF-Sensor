@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#1a1008">
+<title>🍞 Geschiedenis — Zuurdesem Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  :root {
+    --bg:     #1a1008;
+    --card:   #2a1e0e;
+    --border: #4a3520;
+    --amber:  #f59e0b;
+    --orange: #f97316;
+    --cream:  #fef3c7;
+    --muted:  #92816a;
+    --green:  #4ade80;
+    --red:    #f87171;
+    --blue:   #60a5fa;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--cream);
+    min-height: 100vh; padding: 0 0 40px;
+  }
+  header {
+    background: linear-gradient(135deg, #3d2408, #1a1008);
+    padding: 18px 20px 14px;
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 1.2rem; font-weight: 700; }
+  header a.back {
+    margin-left: auto; font-size: 0.78rem; color: var(--muted);
+    text-decoration: none; padding: 4px 10px;
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  header a.back:hover { color: var(--cream); border-color: var(--amber); }
+
+  main { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+  }
+
+  /* Sessie-lijst */
+  .session-item {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 0; cursor: pointer;
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .session-item:last-child { border-bottom: none; }
+  .session-item:hover .session-title { color: var(--amber); }
+  .session-badge {
+    font-size: 1.3rem; line-height: 1; flex-shrink: 0; margin-top: 2px;
+  }
+  .session-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 3px; }
+  .session-meta  { font-size: 0.75rem; color: var(--muted); line-height: 1.6; }
+  .verdict-tag {
+    display: inline-block; font-size: 0.7rem; padding: 1px 7px;
+    border-radius: 10px; margin-left: 6px; font-weight: 600;
+  }
+  .verdict-early { background: #7c2d1244; color: var(--orange); }
+  .verdict-good  { background: #14532d44; color: var(--green); }
+  .verdict-late  { background: #1e3a5f44; color: var(--blue); }
+
+  /* Detail-weergave */
+  #detail { display: none; }
+  .detail-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  }
+  .detail-header button {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 8px; padding: 4px 10px; font-size: 0.78rem; cursor: pointer;
+  }
+  .detail-header button:hover { color: var(--cream); border-color: var(--amber); }
+  .detail-header h2 { font-size: 1rem; font-weight: 700; flex: 1; }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .stat { background: #1a1008; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .stat .val { font-size: 1.5rem; font-weight: 800; color: var(--amber); }
+  .stat .lbl { font-size: 0.7rem; color: var(--muted); margin-top: 3px; }
+
+  .chart-wrap { position: relative; height: 220px; margin-bottom: 14px; }
+
+  /* Verdict knoppen in detail */
+  .verdict-section { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .btn-verdict {
+    flex: 1; min-width: 80px; padding: 10px 8px;
+    border-radius: 10px; border: 1px solid var(--border);
+    background: #1a1008; color: var(--cream);
+    font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .btn-verdict:hover { border-color: var(--amber); }
+  .btn-verdict.selected { background: var(--amber); color: #1a1008; border-color: var(--amber); }
+  #detail-verdict-notes {
+    width: 100%; margin-bottom: 10px;
+    background: #1a1008; border: 1px solid var(--border);
+    color: var(--cream); border-radius: 8px;
+    padding: 8px 10px; font-size: 0.85rem; resize: vertical; display: none;
+  }
+  #detail-verdict-notes.visible { display: block; }
+  .btn-save {
+    width: 100%; padding: 12px; border-radius: 10px; border: none;
+    background: var(--amber); color: #1a1008;
+    font-size: 0.9rem; font-weight: 700; cursor: pointer;
+  }
+  .export-link {
+    display: block; text-align: center; margin-top: 10px;
+    font-size: 0.78rem; color: var(--muted); text-decoration: none;
+  }
+  .export-link:hover { color: var(--amber); }
+
+  #empty-msg { text-align: center; padding: 30px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>📋 Sessie-geschiedenis</h1>
+  </div>
+  <a class="back" href="/">← Terug</a>
+</header>
+
+<main>
+  <!-- Lijst -->
+  <div id="list-view">
+    <div class="card" id="sessions-card">
+      <div id="empty-msg" style="display:none">Nog geen sessies opgeslagen.</div>
+      <div id="sessions-list"></div>
+    </div>
+  </div>
+
+  <!-- Detail -->
+  <div id="detail">
+    <div class="card">
+      <div class="detail-header">
+        <button onclick="showList()">← Terug</button>
+        <h2 id="detail-title">—</h2>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="val" id="d-rise">—</div><div class="lbl">Max rijs (mm)</div></div>
+        <div class="stat"><div class="val" id="d-speed">—</div><div class="lbl">Pieksnelheid (mm/u)</div></div>
+        <div class="stat"><div class="val" id="d-flour">—</div><div class="lbl">Deegtype</div></div>
+        <div class="stat"><div class="val" id="d-hydration">—</div><div class="lbl">Hydratatie</div></div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="detailChart"></canvas>
+      </div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:10px;font-weight:600;">BEOORDELING</div>
+      <div class="verdict-section">
+        <button class="btn-verdict" onclick="selectVerdict('early')">⏪ Te vroeg</button>
+        <button class="btn-verdict" onclick="selectVerdict('good')">✅ Goed moment</button>
+        <button class="btn-verdict" onclick="selectVerdict('late')">⏩ Te laat</button>
+      </div>
+      <textarea id="detail-verdict-notes" rows="2" placeholder="Toelichting (optioneel)…"></textarea>
+      <button class="btn-save" onclick="saveVerdict()">Oordeel opslaan</button>
+      <a id="export-link" class="export-link" href="#">⬇ Download CSV</a>
+    </div>
+  </div>
+</main>
+
+<script>
+let sessions      = [];
+let detailSession = null;
+let detailChart   = null;
+let selectedVerdict = null;
+
+const verdictLabel = { early: '⏪ Te vroeg', good: '✅ Goed', late: '⏩ Te laat' };
+const verdictClass = { early: 'verdict-early', good: 'verdict-good', late: 'verdict-late' };
+
+function fmtDate(ts) {
+  if (!ts) return '—';
+  return new Date(ts * 1000).toLocaleString('nl-NL', {
+    day: '2-digit', month: '2-digit', year: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+function fmtDuration(s) {
+  if (!s) return '—';
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}u ${m}m` : `${m}m`;
+}
+
+async function loadSessions() {
+  const r = await fetch('/api/sessions');
+  sessions = await r.json();
+  renderList();
+}
+
+function renderList() {
+  const el = document.getElementById('sessions-list');
+  if (!sessions.length) {
+    document.getElementById('empty-msg').style.display = '';
+    return;
+  }
+  el.innerHTML = sessions.map(s => {
+    const duration = s.ended_at ? fmtDuration(s.ended_at - s.started_at) : 'Actief';
+    const flour    = s.flour_type || '—';
+    const hydra    = s.hydration_pct ? s.hydration_pct + '%' : '—';
+    const rise     = s.total_rise_mm != null ? s.total_rise_mm.toFixed(1) + ' mm' : '—';
+    const speed    = s.peak_speed_mm_h != null ? s.peak_speed_mm_h.toFixed(1) + ' mm/u' : '—';
+    let vtag = '';
+    if (s.verdict) {
+      vtag = `<span class="verdict-tag ${verdictClass[s.verdict]}">${verdictLabel[s.verdict]}</span>`;
+    }
+    const emoji = s.verdict === 'good' ? '✅' : s.verdict === 'early' ? '⏪' : s.verdict === 'late' ? '⏩' : '🍞';
+    return `<div class="session-item" onclick="loadDetail(${s.id})">
+      <div class="session-badge">${emoji}</div>
+      <div>
+        <div class="session-title">${fmtDate(s.started_at)}${vtag}</div>
+        <div class="session-meta">
+          Duur: ${duration} &nbsp;·&nbsp; ${flour} &nbsp;·&nbsp; ${hydra}<br>
+          Rijs: ${rise} &nbsp;·&nbsp; Piek: ${speed}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadDetail(id) {
+  const r = await fetch(`/api/sessions/${id}`);
+  const data = await r.json();
+  detailSession = data.session;
+  selectedVerdict = data.session.verdict || null;
+
+  document.getElementById('detail-title').textContent = fmtDate(data.session.started_at);
+  document.getElementById('d-rise').textContent    = data.session.total_rise_mm != null ? data.session.total_rise_mm.toFixed(1) : '—';
+  document.getElementById('d-speed').textContent   = data.session.peak_speed_mm_h != null ? data.session.peak_speed_mm_h.toFixed(1) : '—';
+  document.getElementById('d-flour').textContent   = data.session.flour_type || '—';
+  document.getElementById('d-hydration').textContent = data.session.hydration_pct ? data.session.hydration_pct + '%' : '—';
+  document.getElementById('export-link').href = `/api/sessions/${id}/export`;
+
+  // Verdict knoppen pre-fill
+  document.querySelectorAll('.btn-verdict').forEach(b => b.classList.remove('selected'));
+  if (selectedVerdict) {
+    const idx = { early: 0, good: 1, late: 2 }[selectedVerdict];
+    document.querySelectorAll('.btn-verdict')[idx].classList.add('selected');
+  }
+  const notesEl = document.getElementById('detail-verdict-notes');
+  notesEl.value = data.session.verdict_notes || '';
+  if (selectedVerdict) notesEl.classList.add('visible');
+  else notesEl.classList.remove('visible');
+
+  renderDetailChart(data.measurements);
+  document.getElementById('list-view').style.display = 'none';
+  document.getElementById('detail').style.display = '';
+}
+
+function showList() {
+  document.getElementById('detail').style.display = 'none';
+  document.getElementById('list-view').style.display = '';
+}
+
+function renderDetailChart(measurements) {
+  if (detailChart) { detailChart.destroy(); detailChart = null; }
+  const ctx = document.getElementById('detailChart').getContext('2d');
+  detailChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: 'Rijs (mm)',
+          data: measurements.map(m => ({ x: m.ts * 1000, y: m.rise_mm || 0 })),
+          borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)',
+          borderWidth: 2, pointRadius: 0, tension: 0.3, fill: true, yAxisID: 'y',
+        },
+        {
+          label: 'Snelheid (mm/u)',
+          data: measurements.map(m => ({ x: m.ts * 1000, y: Math.max(0, m.speed_mm_h || 0) })),
+          borderColor: '#60a5fa', backgroundColor: 'transparent',
+          borderWidth: 1.5, pointRadius: 0, tension: 0.4,
+          borderDash: [4, 3], yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      animation: false, responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          type: 'time',
+          time: { tooltipFormat: 'HH:mm', displayFormats: { minute: 'HH:mm', hour: 'HH:mm' } },
+          grid: { color: '#ffffff0a' },
+          ticks: { color: '#92816a', maxTicksLimit: 5, font: { size: 10 } },
+        },
+        y: {
+          position: 'left',
+          grid: { color: '#ffffff0a' },
+          ticks: { color: '#f59e0b', font: { size: 10 }, callback: v => v + ' mm' },
+        },
+        y2: {
+          position: 'right', grid: { display: false },
+          ticks: { color: '#60a5fa', font: { size: 10 }, callback: v => v + ' mm/u' },
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#92816a', font: { size: 11 }, boxWidth: 14 } },
+        tooltip: {
+          backgroundColor: '#2a1e0e', borderColor: '#4a3520', borderWidth: 1,
+          titleColor: '#fef3c7', bodyColor: '#92816a',
+        }
+      }
+    }
+  });
+}
+
+function selectVerdict(v) {
+  selectedVerdict = v;
+  document.querySelectorAll('.btn-verdict').forEach(b => b.classList.remove('selected'));
+  const idx = { early: 0, good: 1, late: 2 }[v];
+  document.querySelectorAll('.btn-verdict')[idx].classList.add('selected');
+  document.getElementById('detail-verdict-notes').classList.add('visible');
+}
+
+async function saveVerdict() {
+  if (!selectedVerdict || !detailSession) return;
+  const notes = document.getElementById('detail-verdict-notes').value || '';
+  await fetch(`/api/sessions/${detailSession.id}/verdict`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ verdict: selectedVerdict, notes }),
+  });
+  // Update lokale data en ga terug
+  detailSession.verdict = selectedVerdict;
+  detailSession.verdict_notes = notes;
+  const s = sessions.find(x => x.id === detailSession.id);
+  if (s) { s.verdict = selectedVerdict; s.verdict_notes = notes; }
+  showList();
+  renderList();
+}
+
+loadSessions();
+</script>
+</body>
+</html>

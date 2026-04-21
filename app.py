@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import logging
 import queue
@@ -147,6 +149,11 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/history")
+def history():
+    return render_template("history.html")
+
+
 @app.route("/stream")
 def stream():
     client_q = queue.Queue(maxsize=50)
@@ -182,7 +189,18 @@ def stream():
 @app.route("/api/start", methods=["POST"])
 def api_start():
     global _active_session, _oven_timer, _oven_on
-    notes = (request.json or {}).get("notes", "")
+    body = request.json or {}
+    notes        = body.get("notes", "")
+    flour_type   = body.get("flour_type") or None
+    hydration    = body.get("hydration_pct")
+    hydration    = int(hydration) if hydration is not None else None
+
+    # Sluit vorige sessie af
+    with _lock:
+        prev = _active_session
+    if prev:
+        db.end_session(prev["id"])
+
     deadline = time.time() + 60
     while time.time() < deadline:
         with _lock:
@@ -192,15 +210,15 @@ def api_start():
         time.sleep(1)
     else:
         return jsonify({"ok": False, "error": "Geen sensordata beschikbaar (timeout)"}), 500
-    baseline = dist
-    session_id = db.start_session(float(baseline), notes)
+
+    session_id = db.start_session(float(dist), notes, flour_type, hydration)
     with _lock:
         _active_session = db.get_active_session()
         if _oven_timer:
             _oven_timer.cancel()
         _oven_timer = None
         _oven_on = False
-    return jsonify({"ok": True, "session_id": session_id, "baseline_mm": baseline})
+    return jsonify({"ok": True, "session_id": session_id, "baseline_mm": dist})
 
 
 @app.route("/api/status")
@@ -234,8 +252,69 @@ def api_history():
     return jsonify(db.get_measurements(session["id"]))
 
 
+# ── Sessie-geschiedenis API ────────────────────────────────
+
+@app.route("/api/sessions")
+def api_sessions():
+    return jsonify(db.list_sessions())
+
+
+@app.route("/api/sessions/<int:session_id>")
+def api_session_detail(session_id):
+    sessions = db.list_sessions()
+    sess = next((s for s in sessions if s["id"] == session_id), None)
+    if not sess:
+        return jsonify({"error": "Niet gevonden"}), 404
+    measurements = db.get_measurements(session_id)
+    return jsonify({"session": sess, "measurements": measurements})
+
+
+@app.route("/api/sessions/<int:session_id>/verdict", methods=["POST"])
+def api_session_verdict(session_id):
+    body    = request.json or {}
+    verdict = body.get("verdict", "")
+    notes   = body.get("notes", "")
+    if verdict not in ("early", "good", "late"):
+        return jsonify({"ok": False, "error": "Ongeldig oordeel"}), 400
+    db.set_session_verdict(session_id, verdict, notes)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sessions/<int:session_id>/export")
+def api_session_export(session_id):
+    measurements = db.get_measurements(session_id)
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=["ts", "distance_mm", "rise_mm", "rise_pct", "speed_mm_h"])
+    w.writeheader()
+    w.writerows(measurements)
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=sessie_{session_id}.csv"},
+    )
+
+
 if __name__ == "__main__":
     db.init_db()
+
+    # Sessie-herstel na herstart
+    last = db.get_active_session()
+    if last:
+        if last.get("ended_at"):
+            _active_session = None
+        else:
+            measurements = db.get_measurements(last["id"])
+            if measurements:
+                age = time.time() - measurements[-1]["ts"]
+                if age < 86400:
+                    _active_session = last
+                    log.info(f"[main] Sessie {last['id']} hersteld")
+                else:
+                    db.end_session(last["id"])
+                    log.info(f"[main] Sessie {last['id']} afgesloten (te oud)")
+            else:
+                _active_session = last
+
     threading.Thread(target=_sensor_loop, daemon=True).start()
     print("[main] sensor thread aangemaakt", flush=True)
     log.info(f"Dashboard: http://0.0.0.0:{config.FLASK_PORT}")

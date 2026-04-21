@@ -46,6 +46,17 @@
   }
   header h1 { font-size: 1.2rem; font-weight: 700; letter-spacing: 0.3px; }
   header .sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+  header a.hist-link {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+  header a.hist-link:hover { color: var(--cream); border-color: var(--amber); }
 
   .dot {
     width: 10px; height: 10px; border-radius: 50%;
@@ -195,6 +206,67 @@
   }
   #no-session h2 { font-size: 1.1rem; margin-bottom: 8px; }
   #no-session p  { font-size: 0.85rem; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+
+  /* ── Modal dialoog ── */
+  .modal-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: #000000aa;
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px 20px;
+    width: min(360px, 92vw);
+  }
+  .modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 16px; }
+  .form-row { margin-bottom: 14px; }
+  .form-row label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 5px; }
+  .form-row select, .form-row input {
+    width: 100%;
+    background: #1a1008;
+    border: 1px solid var(--border);
+    color: var(--cream);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 0.9rem;
+  }
+  .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .modal-actions .btn { flex: 1; }
+
+  /* ── Feedback sectie ── */
+  .verdict-section { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-verdict {
+    flex: 1; min-width: 80px;
+    padding: 10px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: #1a1008;
+    color: var(--cream);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .btn-verdict:hover { border-color: var(--amber); }
+  .btn-verdict.selected { background: var(--amber); color: #1a1008; border-color: var(--amber); }
+  #verdict-notes {
+    width: 100%; margin-top: 10px;
+    background: #1a1008;
+    border: 1px solid var(--border);
+    color: var(--cream);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    resize: vertical;
+    display: none;
+  }
+  #verdict-notes.visible { display: block; }
 </style>
 </head>
 <body>
@@ -205,7 +277,36 @@
     <h1>🍞 Zuurdesem Monitor</h1>
     <div class="sub" id="conn-label">Verbinden…</div>
   </div>
+  <a class="hist-link" href="/history">📋 Geschiedenis</a>
 </header>
+
+<!-- Dialoog: nieuwe meting starten -->
+<div class="modal-backdrop" id="start-modal">
+  <div class="modal">
+    <h3>Nieuwe meting starten</h3>
+    <div class="form-row">
+      <label>Deegtype</label>
+      <select id="flour-type">
+        <option value="">— Niet opgegeven —</option>
+        <option value="licht">Licht (tarwebloem)</option>
+        <option value="volkoren">Volkoren</option>
+        <option value="mix">Mix (licht + volkoren)</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Hydratatie (%)</label>
+      <input type="number" id="hydration" min="50" max="100" placeholder="bijv. 75">
+    </div>
+    <div class="form-row">
+      <label>Notitie (optioneel)</label>
+      <input type="text" id="start-notes" placeholder="">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-stop" onclick="closeStartModal()">Annuleren</button>
+      <button class="btn btn-start" onclick="confirmStart()">▶ Starten</button>
+    </div>
+  </div>
+</div>
 
 <main>
 
@@ -213,7 +314,7 @@
   <div id="no-session" class="card" style="display:none">
     <h2>Nog geen meting actief</h2>
     <p>Plaats de sensor boven het deeg en druk op<br><strong>Meting starten</strong> om te beginnen.</p>
-    <button class="btn btn-start" onclick="startSession()">▶ Meting starten</button>
+    <button class="btn btn-start" onclick="openStartModal()">▶ Meting starten</button>
   </div>
 
   <!-- Actieve sessie -->
@@ -266,6 +367,18 @@
       <div class="countdown" id="oven-countdown"></div>
     </div>
 
+    <!-- Feedback -->
+    <div class="card" id="verdict-card" style="display:none">
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:10px;font-weight:600;">BEOORDELING</div>
+      <div class="verdict-section">
+        <button class="btn-verdict" onclick="selectVerdict('early')">⏪ Te vroeg</button>
+        <button class="btn-verdict" onclick="selectVerdict('good')">✅ Goed moment</button>
+        <button class="btn-verdict" onclick="selectVerdict('late')">⏩ Te laat</button>
+      </div>
+      <textarea id="verdict-notes" rows="2" placeholder="Toelichting (optioneel)…"></textarea>
+      <button class="btn btn-start" style="margin-top:10px;" onclick="submitVerdict()">Opslaan</button>
+    </div>
+
     <!-- Grafiek -->
     <div class="card">
       <div class="chart-header">
@@ -299,7 +412,7 @@
     </div>
 
     <!-- Reset -->
-    <button class="btn btn-start" onclick="startSession()">🔄 Nieuwe meting starten</button>
+    <button class="btn btn-start" onclick="openStartModal()">🔄 Nieuwe meting starten</button>
 
     <div class="last-update" id="last-update"></div>
 
@@ -308,9 +421,11 @@
 
 <script>
 // ── State ─────────────────────────────────────────────────
-let allPoints   = [];   // {ts, rise_mm, rise_pct, speed_mm_h}
-let ovenTimer   = null; // countdown interval
-let chart       = null;
+let allPoints      = [];
+let ovenTimer      = null;
+let chart          = null;
+let activeSessionId = null;
+let selectedVerdict = null;
 
 // ── Chart init ────────────────────────────────────────────
 function initChart() {
@@ -446,6 +561,10 @@ function applyHistory(data) {
   updateChart();
 }
 
+function maybeShowVerdictCard() {
+  if (activeSessionId) document.getElementById('verdict-card').style.display = '';
+}
+
 function addPoint(d) {
   if (d.ts) {
     allPoints.push({
@@ -541,7 +660,7 @@ function connect() {
       if (data.ambient != null) updateAmbient(data.ambient);
       if (data.oven_on != null) setOvenState(data.oven_on);
     }
-    else if (data.type === 'oven_scheduled') showOvenAlert(data);
+    else if (data.type === 'oven_scheduled') { showOvenAlert(data); maybeShowVerdictCard(); }
     else if (data.type === 'oven_on') {
       const el = document.getElementById('oven-alert');
       el.style.background = 'linear-gradient(135deg, #14532d, #052e16)';
@@ -572,24 +691,62 @@ function connect() {
 }
 
 // ── API calls ─────────────────────────────────────────────
-async function startSession() {
-  const notes = '';   // eventueel dialog voor notitie
+function openStartModal() {
+  document.getElementById('start-modal').classList.add('open');
+}
+function closeStartModal() {
+  document.getElementById('start-modal').classList.remove('open');
+}
+
+async function confirmStart() {
+  const flour_type    = document.getElementById('flour-type').value || null;
+  const hydration_raw = document.getElementById('hydration').value;
+  const hydration_pct = hydration_raw ? parseInt(hydration_raw) : null;
+  const notes         = document.getElementById('start-notes').value || '';
+  closeStartModal();
   try {
     const r = await fetch('/api/start', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({notes})
+      body: JSON.stringify({notes, flour_type, hydration_pct})
     });
     const d = await r.json();
     if (d.ok) {
+      activeSessionId = d.session_id;
       allPoints = [];
+      selectedVerdict = null;
       if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
       document.getElementById('oven-alert').classList.remove('visible');
+      document.getElementById('verdict-card').style.display = 'none';
       if (ovenTimer) clearInterval(ovenTimer);
+      setOvenState(false);
       showSession();
     } else {
       alert('Kon sessie niet starten: ' + (d.error || 'onbekende fout'));
     }
+  } catch (err) {
+    alert('Fout: ' + err.message);
+  }
+}
+
+function selectVerdict(v) {
+  selectedVerdict = v;
+  document.querySelectorAll('.btn-verdict').forEach(b => b.classList.remove('selected'));
+  const map = { early: 0, good: 1, late: 2 };
+  document.querySelectorAll('.btn-verdict')[map[v]].classList.add('selected');
+  document.getElementById('verdict-notes').classList.add('visible');
+}
+
+async function submitVerdict() {
+  if (!selectedVerdict || !activeSessionId) return;
+  const notes = document.getElementById('verdict-notes').value || '';
+  try {
+    await fetch(`/api/sessions/${activeSessionId}/verdict`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({verdict: selectedVerdict, notes})
+    });
+    document.getElementById('verdict-card').style.display = 'none';
   } catch (err) {
     alert('Fout: ' + err.message);
   }
@@ -634,7 +791,8 @@ connect();
 
 // Check status bij laden
 fetch('/api/status').then(r => r.json()).then(d => {
-  if (!d.session) showNoSession();
+  if (!d.session) { showNoSession(); return; }
+  activeSessionId = d.session.id;
   if (d.oven_on != null) setOvenState(d.oven_on);
 });
 </script>

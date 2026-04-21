@@ -30,14 +30,30 @@ def init_db():
                 speed_mm_h  REAL
             );
         """)
+        # Migratie: voeg nieuwe kolommen toe als ze nog niet bestaan
+        existing = {row[1] for row in c.execute("PRAGMA table_info(sessions)")}
+        migrations = [
+            ("flour_type",      "ALTER TABLE sessions ADD COLUMN flour_type TEXT"),
+            ("hydration_pct",   "ALTER TABLE sessions ADD COLUMN hydration_pct INTEGER"),
+            ("verdict",         "ALTER TABLE sessions ADD COLUMN verdict TEXT"),
+            ("verdict_notes",   "ALTER TABLE sessions ADD COLUMN verdict_notes TEXT"),
+            ("peak_speed_mm_h", "ALTER TABLE sessions ADD COLUMN peak_speed_mm_h REAL"),
+            ("total_rise_mm",   "ALTER TABLE sessions ADD COLUMN total_rise_mm REAL"),
+            ("ended_at",        "ALTER TABLE sessions ADD COLUMN ended_at REAL"),
+        ]
+        for col, sql in migrations:
+            if col not in existing:
+                c.execute(sql)
     print(f"[db] Database klaar: {config.DB_PATH}")
 
 
-def start_session(baseline_mm: float, notes: str = "") -> int:
+def start_session(baseline_mm: float, notes: str = "",
+                  flour_type: str = None, hydration_pct: int = None) -> int:
     with _conn() as c:
         cur = c.execute(
-            "INSERT INTO sessions (started_at, baseline_mm, notes) VALUES (?,?,?)",
-            (time.time(), baseline_mm, notes),
+            """INSERT INTO sessions (started_at, baseline_mm, notes, flour_type, hydration_pct)
+               VALUES (?,?,?,?,?)""",
+            (time.time(), baseline_mm, notes, flour_type, hydration_pct),
         )
         return cur.lastrowid
 
@@ -48,6 +64,41 @@ def get_active_session():
             "SELECT * FROM sessions ORDER BY id DESC LIMIT 1"
         ).fetchone()
         return dict(row) if row else None
+
+
+def end_session(session_id: int):
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT rise_mm, speed_mm_h FROM measurements WHERE session_id=?",
+            (session_id,),
+        ).fetchall()
+        peak_speed = max((r["speed_mm_h"] or 0 for r in rows), default=0)
+        total_rise = max((r["rise_mm"] or 0 for r in rows), default=0)
+        c.execute(
+            """UPDATE sessions
+               SET ended_at=?, peak_speed_mm_h=?, total_rise_mm=?
+               WHERE id=?""",
+            (time.time(), peak_speed, total_rise, session_id),
+        )
+
+
+def list_sessions() -> list:
+    with _conn() as c:
+        rows = c.execute(
+            """SELECT id, started_at, ended_at, baseline_mm, notes,
+                      flour_type, hydration_pct, verdict, verdict_notes,
+                      peak_speed_mm_h, total_rise_mm, oven_triggered
+               FROM sessions ORDER BY id DESC"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def set_session_verdict(session_id: int, verdict: str, notes: str = ""):
+    with _conn() as c:
+        c.execute(
+            "UPDATE sessions SET verdict=?, verdict_notes=? WHERE id=?",
+            (verdict, notes, session_id),
+        )
 
 
 def mark_oven_triggered(session_id: int):
@@ -68,7 +119,7 @@ def log_measurement(session_id, distance_mm, rise_mm, rise_pct, speed_mm_h):
         )
 
 
-def get_measurements(session_id: int, limit: int = 500) -> list:
+def get_measurements(session_id: int, limit: int = 2000) -> list:
     with _conn() as c:
         rows = c.execute(
             """SELECT ts, distance_mm, rise_mm, rise_pct, speed_mm_h
