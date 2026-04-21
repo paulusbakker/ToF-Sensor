@@ -199,6 +199,51 @@
     min-height: 1.2em;
   }
 
+  /* ── Toggle switch ── */
+  .toggle-wrap { display: flex; align-items: center; }
+  .toggle-wrap input[type="checkbox"] { display: none; }
+  .toggle-track {
+    width: 44px; height: 24px; border-radius: 12px;
+    background: var(--border); cursor: pointer;
+    position: relative; transition: background .2s;
+    flex-shrink: 0;
+  }
+  .toggle-track::after {
+    content: ''; position: absolute;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--cream); top: 3px; left: 3px;
+    transition: transform .2s;
+  }
+  .toggle-wrap input:checked + .toggle-track { background: var(--amber); }
+  .toggle-wrap input:checked + .toggle-track::after { transform: translateX(20px); }
+
+  /* ── Instellingen card ── */
+  .setting-row {
+    display: flex; align-items: center;
+    justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+  }
+  .setting-row:last-of-type { border-bottom: none; }
+  .setting-label { font-size: .85rem; color: var(--cream); }
+  .setting-input {
+    width: 64px; background: #1a1008;
+    border: 1px solid var(--border); color: var(--cream);
+    border-radius: 7px; padding: 5px 8px; font-size: .9rem;
+    text-align: right;
+  }
+  #settings-feedback {
+    font-size: .72rem; color: var(--green);
+    text-align: center; min-height: 1.2em; margin-top: 8px;
+  }
+
+  /* ── Modus badge ── */
+  .mode-badge {
+    font-size: .72rem; font-weight: 600;
+    padding: 2px 9px; border-radius: 12px;
+  }
+  .mode-badge.auto   { color: var(--amber); border: 1px solid var(--amber); background: #f59e0b18; }
+  .mode-badge.manual { color: var(--muted); border: 1px solid var(--border); background: transparent; }
+
   /* ── No session state ── */
   #no-session {
     text-align: center;
@@ -400,7 +445,10 @@
 
     <!-- Oven besturing -->
     <div class="card">
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:6px;font-weight:600;">OVEN BESTURING</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:.8rem;color:var(--muted);font-weight:600;">OVEN BESTURING</div>
+        <span class="mode-badge manual" id="mode-badge">✋ Handmatig</span>
+      </div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <div class="oven-status-dot" id="oven-dot"></div>
         <span style="font-size:1rem;color:var(--cream);" id="oven-label">⏹ Oven is Uit</span>
@@ -409,6 +457,27 @@
         <button class="btn btn-oven" id="btn-oven-on"  onclick="controlOven('on')">🔥 Oven AAN</button>
         <button class="btn btn-stop" id="btn-oven-off" onclick="controlOven('off')">⏹ Oven UIT</button>
       </div>
+    </div>
+
+    <!-- Instellingen -->
+    <div class="card">
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:4px;font-weight:600;">INSTELLINGEN</div>
+      <div class="setting-row">
+        <span class="setting-label">Automatisch oven aan</span>
+        <div class="toggle-wrap">
+          <input type="checkbox" id="auto-oven-toggle" onchange="saveSettings()">
+          <label for="auto-oven-toggle" class="toggle-track"></label>
+        </div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Voorverwarmtijd</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="number" class="setting-input" id="preheat-min"
+                 min="5" max="120" value="45" oninput="scheduleSave()">
+          <span style="font-size:.75rem;color:var(--muted);">min</span>
+        </div>
+      </div>
+      <div id="settings-feedback"></div>
     </div>
 
     <!-- Reset -->
@@ -426,6 +495,7 @@ let ovenTimer      = null;
 let chart          = null;
 let activeSessionId = null;
 let selectedVerdict = null;
+let saveTimer       = null;
 
 // ── Chart init ────────────────────────────────────────────
 function initChart() {
@@ -679,6 +749,11 @@ function connect() {
       if (status) { status.textContent = '✓ Normaal — 60s stabilisatie…'; status.style.color = 'var(--green)'; }
       if (bar)    { bar.style.background = 'var(--green)'; }
     }
+    else if (data.type === 'settings') {
+      setAutoMode(data.auto_oven);
+      const pi = document.getElementById('preheat-min');
+      if (pi) pi.value = data.preheat_min;
+    }
     else if (data.type === 'no_session') showNoSession();
   };
 
@@ -770,6 +845,54 @@ function setOvenState(on) {
   }
 }
 
+// ── Instellingen ──────────────────────────────────────────
+function setAutoMode(on) {
+  const badge  = document.getElementById('mode-badge');
+  const toggle = document.getElementById('auto-oven-toggle');
+  if (badge) {
+    badge.textContent = on ? '🤖 Automatisch' : '✋ Handmatig';
+    badge.className   = 'mode-badge ' + (on ? 'auto' : 'manual');
+  }
+  if (toggle) toggle.checked = on;
+}
+
+function showSettingsFeedback(msg) {
+  const el = document.getElementById('settings-feedback');
+  if (!el) return;
+  el.textContent = msg;
+  setTimeout(() => { el.textContent = ''; }, 2000);
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveSettings, 600);
+}
+
+async function saveSettings() {
+  clearTimeout(saveTimer);
+  const auto_oven   = document.getElementById('auto-oven-toggle')?.checked ?? false;
+  const preheat_min = parseInt(document.getElementById('preheat-min')?.value) || 45;
+  try {
+    const r = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({auto_oven, preheat_min}),
+    });
+    const d = await r.json();
+    if (d.ok) { setAutoMode(d.auto_oven); showSettingsFeedback('✓ Opgeslagen'); }
+  } catch (err) { showSettingsFeedback('Fout: ' + err.message); }
+}
+
+async function loadSettings() {
+  try {
+    const r = await fetch('/api/settings');
+    const d = await r.json();
+    setAutoMode(d.auto_oven);
+    const pi = document.getElementById('preheat-min');
+    if (pi) pi.value = d.preheat_min;
+  } catch { /* stil falen */ }
+}
+
 async function controlOven(action) {
   try {
     const r = await fetch('/api/oven', {
@@ -788,6 +911,7 @@ async function controlOven(action) {
 // ── Init ──────────────────────────────────────────────────
 initChart();
 connect();
+loadSettings();
 
 // Check status bij laden
 fetch('/api/status').then(r => r.json()).then(d => {

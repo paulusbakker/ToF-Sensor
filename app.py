@@ -23,6 +23,7 @@ _lock = threading.Lock()
 _active_session = None
 _oven_timer = None
 _oven_on = False
+_auto_oven_enabled = config.AUTO_OVEN_ENABLED
 _sse_clients = []
 _latest_distance_mm = None
 
@@ -116,11 +117,12 @@ def _sensor_loop():
                     log.info(f"dist={dist}mm  rijs={rise_mm:.1f}mm  speed={speed:.2f}mm/u")
                     signal = analyzer.check_baking_moment(all_m)
                     if signal.triggered and _oven_timer is None and not _oven_on:
-                        delay_s = config.OVEN_PREHEAT_MIN * 60
-                        _oven_timer = threading.Timer(delay_s, _trigger_oven, args=[session["id"]])
-                        _oven_timer.start()
                         _broadcast({"type": "oven_scheduled", "minutes": config.OVEN_PREHEAT_MIN,
                                     "reason": signal.reason})
+                        if _auto_oven_enabled:
+                            delay_s = config.OVEN_PREHEAT_MIN * 60
+                            _oven_timer = threading.Timer(delay_s, _trigger_oven, args=[session["id"]])
+                            _oven_timer.start()
                     time.sleep(config.MEASURE_INTERVAL)
             except Exception as e:
                 log.error(f"[sensor] {e} — herverbinden in 10s")
@@ -228,6 +230,24 @@ def api_status():
     measurements = db.get_measurements(session["id"])
     summary = analyzer.summarize(measurements)
     return jsonify({"session": session, "oven_on": _oven_on, **summary})
+
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    global _auto_oven_enabled
+    if request.method == "GET":
+        return jsonify({"auto_oven": _auto_oven_enabled,
+                        "preheat_min": config.OVEN_PREHEAT_MIN})
+    body = request.json or {}
+    with _lock:
+        if "auto_oven" in body:
+            _auto_oven_enabled = bool(body["auto_oven"])
+        if "preheat_min" in body:
+            config.OVEN_PREHEAT_MIN = max(1, int(body["preheat_min"]))
+    _broadcast({"type": "settings", "auto_oven": _auto_oven_enabled,
+                "preheat_min": config.OVEN_PREHEAT_MIN})
+    return jsonify({"ok": True, "auto_oven": _auto_oven_enabled,
+                    "preheat_min": config.OVEN_PREHEAT_MIN})
 
 
 @app.route("/api/oven", methods=["POST"])
