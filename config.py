@@ -25,7 +25,6 @@ TUYA_VERSION   = 3.3
 # ─── Notificaties (ntfy.sh) ───────────────────────────────
 NTFY_ENABLED = False
 NTFY_TOPIC   = "zuurdesem"
-NTFY_TOKEN   = None  # optioneel auth token, zet in config_local.py
 NTFY_URL     = "https://ntfy.sh"
 
 # ─── Web ──────────────────────────────────────────────────

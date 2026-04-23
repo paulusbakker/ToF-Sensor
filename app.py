@@ -47,13 +47,9 @@ def _send_notification(title: str, message: str, tags: str = "bread"):
     if not config.NTFY_ENABLED:
         return
     try:
-        headers = {}
-        if config.NTFY_TOKEN:
-            headers["Authorization"] = f"Bearer {config.NTFY_TOKEN}"
         requests.post(
             f"{config.NTFY_URL}/{config.NTFY_TOPIC}",
             json={"title": title, "message": message, "tags": [tags]},
-            headers=headers,
             timeout=5,
         )
     except Exception as e:
