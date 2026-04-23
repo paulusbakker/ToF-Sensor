@@ -148,7 +148,7 @@ def _sensor_loop():
                     signal = analyzer.check_baking_moment(all_m)
                     if signal.triggered and _oven_timer is None and not _oven_on:
                         _broadcast({"type": "oven_scheduled", "minutes": config.OVEN_PREHEAT_MIN,
-                                    "reason": signal.reason})
+                                    "reason": signal.reason, "ts": time.time()})
                         if _auto_oven_enabled:
                             _send_notification(
                                 "🔥 Oven gepland!",
@@ -212,7 +212,7 @@ def stream():
         if session:
             history = db.get_measurements(session["id"])
             summary = analyzer.summarize(history)
-            yield f"data: {json.dumps({'type': 'history', 'points': history, 'oven_on': _oven_on, **summary})}\n\n"
+            yield f"data: {json.dumps({'type': 'history', 'points': history, 'oven_on': _oven_on, 'oven_at': session.get('oven_at'), **summary})}\n\n"
         else:
             yield f"data: {json.dumps({'type': 'no_session'})}\n\n"
         try:
@@ -283,7 +283,8 @@ def api_settings():
     global _auto_oven_enabled
     if request.method == "GET":
         return jsonify({"auto_oven": _auto_oven_enabled,
-                        "preheat_min": config.OVEN_PREHEAT_MIN})
+                        "preheat_min": config.OVEN_PREHEAT_MIN,
+                        "peak_speed_ratio": config.PEAK_SPEED_RATIO})
     body = request.json or {}
     with _lock:
         if "auto_oven" in body:
@@ -291,9 +292,11 @@ def api_settings():
         if "preheat_min" in body:
             config.OVEN_PREHEAT_MIN = max(1, int(body["preheat_min"]))
     _broadcast({"type": "settings", "auto_oven": _auto_oven_enabled,
-                "preheat_min": config.OVEN_PREHEAT_MIN})
+                "preheat_min": config.OVEN_PREHEAT_MIN,
+                "peak_speed_ratio": config.PEAK_SPEED_RATIO})
     return jsonify({"ok": True, "auto_oven": _auto_oven_enabled,
-                    "preheat_min": config.OVEN_PREHEAT_MIN})
+                    "preheat_min": config.OVEN_PREHEAT_MIN,
+                    "peak_speed_ratio": config.PEAK_SPEED_RATIO})
 
 
 @app.route("/api/oven", methods=["POST"])

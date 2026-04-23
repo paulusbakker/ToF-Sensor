@@ -8,6 +8,7 @@
 <title>🍞 Zuurdesem Monitor</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <style>
   :root {
     --bg:       #1a1008;
@@ -149,6 +150,11 @@
     padding: 3px 8px;
     font-size: 0.75rem;
   }
+
+  /* ── Prognose ── */
+  .eta-time { font-size: 1.4rem; font-weight: 700; color: var(--amber); }
+  .eta-remaining { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+  .eta-disclaimer { font-size: 0.7rem; color: var(--muted); margin-top: 4px; opacity: 0.65; }
 
   /* ── Oven control ── */
   .oven-section { display: flex; gap: 10px; }
@@ -409,6 +415,14 @@
       </div>
     </div>
 
+    <!-- Prognose -->
+    <div id="prediction-card" class="card" style="display:none">
+      <div style="font-size:.75rem;color:var(--muted);font-weight:600;margin-bottom:6px;">📈 PROGNOSE</div>
+      <div>Verwacht klaar: <span class="eta-time" id="eta-time">—</span></div>
+      <div class="eta-remaining" id="eta-remaining"></div>
+      <div class="eta-disclaimer">(schatting bij huidige snelheid)</div>
+    </div>
+
     <!-- Alert: oven gepland -->
     <div class="alert" id="oven-alert">
       🔥 Bakmoment nadert!<br>
@@ -494,12 +508,14 @@
 
 <script>
 // ── State ─────────────────────────────────────────────────
-let allPoints      = [];
-let ovenTimer      = null;
-let chart          = null;
-let activeSessionId = null;
-let selectedVerdict = null;
-let saveTimer       = null;
+let allPoints        = [];
+let ovenTimer        = null;
+let chart            = null;
+let activeSessionId  = null;
+let selectedVerdict  = null;
+let saveTimer        = null;
+let ovenAnnotationTs = null;
+let peakSpeedRatio   = 0.30;
 
 // ── Chart init ────────────────────────────────────────────
 function initChart() {
@@ -568,7 +584,8 @@ function initChart() {
           borderWidth: 1,
           titleColor: '#fef3c7',
           bodyColor: '#92816a',
-        }
+        },
+        annotation: { annotations: {} }
       }
     }
   });
@@ -592,6 +609,86 @@ function updateChart() {
   }
 
   chart.update('none');
+}
+
+function setOvenAnnotation(tsSeconds) {
+  ovenAnnotationTs = tsSeconds;
+  if (!chart) return;
+  chart.options.plugins.annotation.annotations = {
+    ovenLine: {
+      type: 'line',
+      xMin: tsSeconds * 1000,
+      xMax: tsSeconds * 1000,
+      borderColor: '#f59e0b',
+      borderWidth: 2,
+      borderDash: [5, 4],
+      label: {
+        content: '🔥 Oven',
+        display: true,
+        position: 'start',
+        color: '#f59e0b',
+        backgroundColor: 'rgba(26,16,8,0.85)',
+        font: { size: 11 },
+        padding: 4,
+      }
+    }
+  };
+  chart.update('none');
+}
+
+function clearOvenAnnotation() {
+  ovenAnnotationTs = null;
+  if (chart) {
+    chart.options.plugins.annotation.annotations = {};
+    chart.update('none');
+  }
+}
+
+function computeETA(points, peakSpeed, ratio) {
+  if (points.length < 10 || peakSpeed <= 0) return null;
+  const threshold    = peakSpeed * ratio;
+  const last         = points[points.length - 1];
+  const currentSpeed = last.speed_mm_h || 0;
+  if (currentSpeed <= threshold) return null;
+
+  // Linear regression on last 8 speed values to get deceleration slope
+  const recent = points.slice(-8);
+  const n      = recent.length;
+  if (n < 3) return null;
+  const speeds = recent.map(p => p.speed_mm_h || 0);
+  const times  = recent.map(p => p.ts);
+  const tMean  = times.reduce((a, b) => a + b, 0) / n;
+  const sMean  = speeds.reduce((a, b) => a + b, 0) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (times[i] - tMean) * (speeds[i] - sMean);
+    den += (times[i] - tMean) ** 2;
+  }
+  if (den === 0 || num >= 0) return null;  // not decelerating yet
+  const slope     = num / den;             // (mm/u) per second
+  const dtSeconds = (threshold - currentSpeed) / slope;
+  if (dtSeconds <= 0 || dtSeconds > 24 * 3600) return null;
+  return last.ts + dtSeconds * 1.2;        // +20% safety margin
+}
+
+function updatePrediction(d) {
+  const card = document.getElementById('prediction-card');
+  if (!card) return;
+  if (d.signal || d.status === 'waiting' || !d.peak_speed) {
+    card.style.display = 'none';
+    return;
+  }
+  const eta = computeETA(allPoints, d.peak_speed, peakSpeedRatio);
+  if (eta === null) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  const etaDate = new Date(eta * 1000);
+  const h = etaDate.getHours().toString().padStart(2, '0');
+  const m = etaDate.getMinutes().toString().padStart(2, '0');
+  setText('eta-time', `~${h}:${m}`);
+  const secsLeft = Math.max(0, eta - Date.now() / 1000);
+  const hLeft    = Math.floor(secsLeft / 3600);
+  const mLeft    = Math.floor((secsLeft % 3600) / 60);
+  setText('eta-remaining', hLeft > 0 ? `nog ±${hLeft}u ${mLeft}m` : `nog ±${mLeft}m`);
 }
 
 // ── UI updates ────────────────────────────────────────────
@@ -632,7 +729,9 @@ function applyHistory(data) {
   if (data.points) allPoints = data.points;
   applyData(data);
   if (data.oven_on != null) setOvenState(data.oven_on);
+  if (data.oven_at) setOvenAnnotation(data.oven_at);
   updateChart();
+  updatePrediction(data);
 }
 
 function maybeShowVerdictCard() {
@@ -650,12 +749,15 @@ function addPoint(d) {
   }
   applyData(d);
   updateChart();
+  updatePrediction(d);
 }
 
 function showOvenAlert(data) {
   const el = document.getElementById('oven-alert');
   el.classList.add('visible');
   setText('alert-reason', data.reason || '');
+  setOvenAnnotation(data.ts || Date.now() / 1000);
+  document.getElementById('prediction-card').style.display = 'none';
 
   let secsLeft = data.minutes * 60;
   if (ovenTimer) clearInterval(ovenTimer);
@@ -761,12 +863,15 @@ function connect() {
       setAutoMode(data.auto_oven);
       const pi = document.getElementById('preheat-min');
       if (pi) pi.value = data.preheat_min;
+      if (data.peak_speed_ratio != null) peakSpeedRatio = data.peak_speed_ratio;
     }
     else if (data.type === 'no_session') {
       allPoints = []; activeSessionId = null;
+      clearOvenAnnotation();
       if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update('none'); }
       if (ovenTimer) { clearInterval(ovenTimer); ovenTimer = null; }
       setOvenState(false);
+      document.getElementById('prediction-card').style.display = 'none';
       showNoSession();
     }
   };
@@ -804,9 +909,11 @@ async function confirmStart() {
       activeSessionId = d.session_id;
       allPoints = [];
       selectedVerdict = null;
+      clearOvenAnnotation();
       if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
       document.getElementById('oven-alert').classList.remove('visible');
       document.getElementById('verdict-card').style.display = 'none';
+      document.getElementById('prediction-card').style.display = 'none';
       if (ovenTimer) clearInterval(ovenTimer);
       setOvenState(false);
       showSession();
@@ -916,9 +1023,11 @@ async function stopSession() {
       allPoints = [];
       activeSessionId = null;
       selectedVerdict = null;
+      clearOvenAnnotation();
       if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
       document.getElementById('oven-alert').classList.remove('visible');
       document.getElementById('verdict-card').style.display = 'none';
+      document.getElementById('prediction-card').style.display = 'none';
       if (ovenTimer) clearInterval(ovenTimer);
       setOvenState(false);
       showNoSession();
