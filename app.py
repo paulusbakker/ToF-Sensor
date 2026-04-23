@@ -26,6 +26,7 @@ _oven_on = False
 _auto_oven_enabled = config.AUTO_OVEN_ENABLED
 _sse_clients = []
 _latest_distance_mm = None
+_sensor_enabled = True
 
 
 def _broadcast(payload: dict):
@@ -42,7 +43,7 @@ def _broadcast(payload: dict):
 
 
 def _sensor_loop():
-    global _oven_timer, _oven_on, _latest_distance_mm
+    global _oven_timer, _oven_on, _latest_distance_mm, _sensor_enabled
     print("[sensor_loop] thread gestart", flush=True)
     try:
         from sensor import VL53L1X
@@ -58,6 +59,9 @@ def _sensor_loop():
                 fridge_open = False
                 no_data_streak = 0
                 while True:
+                    if not _sensor_enabled:
+                        time.sleep(5)
+                        continue
                     dist, ambient = sensor.read_distance_mm()
                     print(f"[debug] dist={dist} ambient={ambient}", flush=True)
                     if dist == -1:
@@ -202,7 +206,7 @@ def stream():
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
-    global _active_session, _oven_timer, _oven_on
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled
     body = request.json or {}
     notes        = body.get("notes", "")
     flour_type   = body.get("flour_type") or None
@@ -212,6 +216,8 @@ def api_start():
     # Sluit ALLE open sessies af (ook sessies van voor een reboot)
     for sess in db.list_unclosed_sessions():
         db.end_session(sess["id"])
+
+    _sensor_enabled = True
 
     deadline = time.time() + 60
     while time.time() < deadline:
@@ -326,16 +332,19 @@ def api_session_export(session_id):
 
 @app.route("/api/stop", methods=["POST"])
 def api_stop():
-    global _active_session, _oven_timer, _oven_on
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm
     unclosed = db.list_unclosed_sessions()
     for sess in unclosed:
         db.end_session(sess["id"])
     with _lock:
         _active_session = None
+        _latest_distance_mm = None
+        _sensor_enabled = False
         if _oven_timer:
             _oven_timer.cancel()
         _oven_timer = None
         _oven_on = False
+    _broadcast({"type": "sensor_paused"})
     _broadcast({"type": "no_session"})
     return jsonify({"ok": True, "closed": len(unclosed)})
 
