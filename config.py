@@ -22,6 +22,12 @@ TUYA_LOCAL_KEY = "YOUR_LOCAL_KEY"
 TUYA_IP        = "192.168.1.x"
 TUYA_VERSION   = 3.3
 
+# ─── Notificaties (ntfy.sh) ───────────────────────────────
+NTFY_ENABLED = False
+NTFY_TOPIC   = "zuurdesem"
+NTFY_TOKEN   = None  # optioneel auth token, zet in config_local.py
+NTFY_URL     = "https://ntfy.sh"
+
 # ─── Web ──────────────────────────────────────────────────
 FLASK_PORT = 5000
 FLASK_HOST = "0.0.0.0"

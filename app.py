@@ -7,6 +7,7 @@ import threading
 import time
 import traceback
 
+import requests
 from flask import Flask, Response, jsonify, render_template, request
 
 import analyzer
@@ -40,6 +41,23 @@ def _broadcast(payload: dict):
                 dead.append(q)
         for q in dead:
             _sse_clients.remove(q)
+
+
+def _send_notification(title: str, message: str, tags: str = "bread"):
+    if not config.NTFY_ENABLED:
+        return
+    try:
+        headers = {}
+        if config.NTFY_TOKEN:
+            headers["Authorization"] = f"Bearer {config.NTFY_TOKEN}"
+        requests.post(
+            f"{config.NTFY_URL}/{config.NTFY_TOPIC}",
+            json={"title": title, "message": message, "tags": [tags]},
+            headers=headers,
+            timeout=5,
+        )
+    except Exception as e:
+        log.warning(f"[ntfy] Fout: {e}")
 
 
 def _sensor_loop():
@@ -136,9 +154,20 @@ def _sensor_loop():
                         _broadcast({"type": "oven_scheduled", "minutes": config.OVEN_PREHEAT_MIN,
                                     "reason": signal.reason})
                         if _auto_oven_enabled:
+                            _send_notification(
+                                "🔥 Oven gepland!",
+                                f"Oven gaat over {config.OVEN_PREHEAT_MIN} min automatisch aan\nRijs: {rise_mm:.1f}mm",
+                                "fire",
+                            )
                             delay_s = config.OVEN_PREHEAT_MIN * 60
                             _oven_timer = threading.Timer(delay_s, _trigger_oven, args=[session["id"]])
                             _oven_timer.start()
+                        else:
+                            _send_notification(
+                                "🔥 Bakmoment bereikt!",
+                                f"Zet de oven handmatig aan\nRijs: {rise_mm:.1f}mm",
+                                "fire",
+                            )
                     time.sleep(config.MEASURE_INTERVAL)
             except Exception as e:
                 log.error(f"[sensor] {e} — herverbinden in 10s")
@@ -159,6 +188,9 @@ def _trigger_oven(session_id):
     if success:
         _oven_on = True
         db.mark_oven_triggered(session_id)
+        _send_notification("✅ Oven staat AAN", "Deeg kan zo de oven in!", "white_check_mark")
+    else:
+        _send_notification("⚠️ Oven fout", "Kon oven niet aanzetten", "warning")
     _broadcast({"type": "oven_on", "success": success, "oven_on": _oven_on})
 
 
