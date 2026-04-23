@@ -51,8 +51,10 @@ def _sensor_loop():
             try:
                 sensor.connect()
                 AMBIENT_THRESHOLD = 10
+                JUMP_RESET_THRESHOLD = 10
                 prev_dist = None
                 reject_streak = 0
+                jump_streak = 0
                 fridge_open = False
                 no_data_streak = 0
                 while True:
@@ -74,19 +76,28 @@ def _sensor_loop():
                         time.sleep(config.MEASURE_INTERVAL)
                         continue
                     if ambient > AMBIENT_THRESHOLD:
-                        log.info(f"[sensor] ambient={ambient}")
+                        log.info(f"[sensor] koelkast open (ambient): ambient={ambient}")
                         _broadcast({"type": "fridge_open", "ambient": ambient})
                         reject_streak += 1
+                        jump_streak = 0
                         if reject_streak >= 4 and not fridge_open:
-                            log.info("[sensor] koelkast open gedetecteerd")
                             fridge_open = True
                         time.sleep(config.MEASURE_INTERVAL)
                         continue
                     if prev_dist is not None and abs(dist - prev_dist) > 80:
+                        jump_streak += 1
                         reject_streak += 1
+                        log.info(f"[sensor] koelkast open (jump): dist={dist}, prev={prev_dist}, jump_streak={jump_streak}")
                         if reject_streak >= 4 and not fridge_open:
-                            log.info("[sensor] koelkast open gedetecteerd")
                             fridge_open = True
+                        if jump_streak >= JUMP_RESET_THRESHOLD:
+                            log.warning(f"[sensor] {jump_streak}x jump rejected — force-reset prev_dist {prev_dist}→{dist}")
+                            prev_dist = dist
+                            jump_streak = 0
+                            reject_streak = 0
+                            if fridge_open:
+                                _broadcast({"type": "fridge_closed"})
+                                fridge_open = False
                         time.sleep(config.MEASURE_INTERVAL)
                         continue
                     if fridge_open:
@@ -95,6 +106,7 @@ def _sensor_loop():
                         time.sleep(60)
                         fridge_open = False
                     reject_streak = 0
+                    jump_streak = 0
                     prev_dist = dist
                     with _lock:
                         _latest_distance_mm = dist

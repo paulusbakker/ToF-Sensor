@@ -385,7 +385,7 @@
         <div style="flex:1;height:8px;background:#1a1008;border-radius:4px;overflow:hidden;">
           <div id="ambient-bar" style="height:100%;width:0%;background:var(--green);transition:width .5s,background .5s;"></div>
         </div>
-        <div id="ambient-value" style="font-size:.75rem;color:var(--muted);white-space:nowrap;">0 / 1500 (drempel: 800)</div>
+        <div id="ambient-value" style="font-size:.75rem;color:var(--muted);white-space:nowrap;">0 / 1500 (drempel: 10)</div>
       </div>
       <div class="signal-text" id="ambient-status" style="color:var(--green);">✓ Normaal</div>
     </div>
@@ -693,7 +693,7 @@ function updateAmbient(ambient) {
   const bar    = document.getElementById('ambient-bar');
   const status = document.getElementById('ambient-status');
   const value  = document.getElementById('ambient-value');
-  if (value) value.textContent = ambient + ' / 1500 (drempel: 800)';
+  if (value) value.textContent = ambient + ' / 1500 (drempel: 10)';
   if (bar) {
     bar.style.width = pct + '%';
     if (ambient < 800) {
