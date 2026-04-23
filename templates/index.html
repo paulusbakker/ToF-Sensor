@@ -514,7 +514,8 @@ let chart            = null;
 let activeSessionId  = null;
 let selectedVerdict  = null;
 let saveTimer        = null;
-let ovenAnnotationTs = null;
+let ovenScheduledTs  = null;
+let ovenOnTs         = null;
 let peakSpeedRatio   = 0.30;
 
 // ── Chart init ────────────────────────────────────────────
@@ -611,19 +612,18 @@ function updateChart() {
   chart.update('none');
 }
 
-function setOvenAnnotation(tsSeconds) {
-  ovenAnnotationTs = tsSeconds;
-  if (!chart) return;
-  chart.options.plugins.annotation.annotations = {
-    ovenLine: {
+function _buildAnnotations() {
+  const a = {};
+  if (ovenScheduledTs) {
+    a.geplandLine = {
       type: 'line',
-      xMin: tsSeconds * 1000,
-      xMax: tsSeconds * 1000,
+      xMin: ovenScheduledTs * 1000,
+      xMax: ovenScheduledTs * 1000,
       borderColor: '#f59e0b',
       borderWidth: 2,
       borderDash: [5, 4],
       label: {
-        content: '🔥 Oven',
+        content: '🔥 Gepland',
         display: true,
         position: 'start',
         color: '#f59e0b',
@@ -631,17 +631,43 @@ function setOvenAnnotation(tsSeconds) {
         font: { size: 11 },
         padding: 4,
       }
-    }
-  };
-  chart.update('none');
+    };
+  }
+  if (ovenOnTs) {
+    a.aanLine = {
+      type: 'line',
+      xMin: ovenOnTs * 1000,
+      xMax: ovenOnTs * 1000,
+      borderColor: '#f87171',
+      borderWidth: 2,
+      label: {
+        content: '🔥 AAN',
+        display: true,
+        position: 'start',
+        color: '#f87171',
+        backgroundColor: 'rgba(26,16,8,0.85)',
+        font: { size: 11 },
+        padding: 4,
+      }
+    };
+  }
+  return a;
+}
+
+function setOvenAnnotation(tsSeconds) {
+  ovenScheduledTs = tsSeconds;
+  if (chart) { chart.options.plugins.annotation.annotations = _buildAnnotations(); chart.update('none'); }
+}
+
+function setOvenOnAnnotation(tsSeconds) {
+  ovenOnTs = tsSeconds;
+  if (chart) { chart.options.plugins.annotation.annotations = _buildAnnotations(); chart.update('none'); }
 }
 
 function clearOvenAnnotation() {
-  ovenAnnotationTs = null;
-  if (chart) {
-    chart.options.plugins.annotation.annotations = {};
-    chart.update('none');
-  }
+  ovenScheduledTs = null;
+  ovenOnTs = null;
+  if (chart) { chart.options.plugins.annotation.annotations = {}; chart.update('none'); }
 }
 
 function computeETA(points, peakSpeed, ratio) {
@@ -729,7 +755,7 @@ function applyHistory(data) {
   if (data.points) allPoints = data.points;
   applyData(data);
   if (data.oven_on != null) setOvenState(data.oven_on);
-  if (data.oven_at) setOvenAnnotation(data.oven_at);
+  if (data.oven_at) setOvenOnAnnotation(data.oven_at);
   updateChart();
   updatePrediction(data);
 }
@@ -846,6 +872,7 @@ function connect() {
       el.style.background = 'linear-gradient(135deg, #14532d, #052e16)';
       setText('oven-countdown', data.success ? '✅ Oven is aan!' : '⚠️ Kon oven niet aanzetten');
       if (data.oven_on != null) setOvenState(data.oven_on);
+      if (data.success && data.ts) setOvenOnAnnotation(data.ts);
     }
     else if (data.type === 'oven_state') setOvenState(data.oven_on);
     else if (data.type === 'fridge_open') {

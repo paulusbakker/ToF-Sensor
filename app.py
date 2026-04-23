@@ -187,7 +187,7 @@ def _trigger_oven(session_id):
         _send_notification("✅ Oven staat AAN", "Deeg kan zo de oven in!", "white_check_mark")
     else:
         _send_notification("⚠️ Oven fout", "Kon oven niet aanzetten", "warning")
-    _broadcast({"type": "oven_on", "success": success, "oven_on": _oven_on})
+    _broadcast({"type": "oven_on", "success": success, "oven_on": _oven_on, "ts": time.time()})
 
 
 @app.route("/")
