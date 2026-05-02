@@ -27,17 +27,6 @@ def compute_rise(distance_mm: int, baseline_mm: float) -> float:
     return max(0.0, baseline_mm - distance_mm)
 
 
-def compute_rise_pct(rise_mm: float, baseline_mm: float,
-                     container_bottom_mm=None) -> float:
-    if container_bottom_mm and container_bottom_mm > baseline_mm:
-        initial_height = container_bottom_mm - baseline_mm
-    else:
-        initial_height = 50.0
-    if initial_height <= 0:
-        return 0.0
-    return (rise_mm / initial_height) * 100.0
-
-
 def compute_speed(measurements: list) -> list:
     if len(measurements) < 2:
         return [0.0] * len(measurements)
@@ -62,7 +51,8 @@ class BakingSignal:
 def check_baking_moment(measurements: list) -> BakingSignal:
     if len(measurements) < 10:
         return BakingSignal(False, "Te weinig data")
-    if measurements[-1]["rise_mm"] < config.MIN_RISE_MM:
+    last_smoothed = smooth_rise_series(measurements)[-1]
+    if last_smoothed < config.MIN_RISE_MM:
         return BakingSignal(False, f"Rijs < {config.MIN_RISE_MM} mm minimum")
     speeds = compute_speed(measurements)
     positive_speeds = [s for s in speeds if s > 0]
@@ -85,10 +75,11 @@ def check_baking_moment(measurements: list) -> BakingSignal:
 
 def summarize(measurements: list) -> dict:
     if not measurements:
-        return {"rise_mm": 0, "rise_mm_smoothed": 0, "rise_pct": 0, "speed_mm_h": 0,
+        return {"rise_mm": 0, "rise_mm_smoothed": 0, "speed_mm_h": 0,
                 "status": "waiting", "status_label": "Wacht op start…", "peak_speed": 0}
     last = measurements[-1]
     smoothed = smooth_rise_series(measurements)
+    last_smoothed = smoothed[-1]
     speeds = compute_speed(measurements)
     peak_speed = max((s for s in speeds if s > 0), default=0)
     signal = check_baking_moment(measurements)
@@ -96,14 +87,13 @@ def summarize(measurements: list) -> dict:
         status, label = "baking", "🔥 Bakmoment nadert!"
     elif last.get("speed_mm_h") and last["speed_mm_h"] > 0.5:
         status, label = "rising", "📈 Rijst actief"
-    elif last["rise_mm"] > config.MIN_RISE_MM:
+    elif last_smoothed > config.MIN_RISE_MM:
         status, label = "slowing", "📉 Rijs vertraagt"
     else:
         status, label = "waiting", "⏳ Wacht op rijs…"
     return {
         "rise_mm":          round(last["rise_mm"] or 0, 1),
-        "rise_mm_smoothed": round(smoothed[-1], 1),
-        "rise_pct":         round(last["rise_pct"] or 0, 1),
+        "rise_mm_smoothed": round(last_smoothed, 1),
         "speed_mm_h":       round(last["speed_mm_h"] or 0, 2),
         "distance_mm":      last["distance_mm"],
         "status":           status,
