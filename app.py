@@ -28,6 +28,7 @@ _auto_oven_enabled = config.AUTO_OVEN_ENABLED
 _sse_clients = []
 _latest_distance_mm = None
 _sensor_enabled = True
+_signal_fired = False
 
 
 def _enrich_measurements(measurements: list) -> list:
@@ -63,7 +64,7 @@ def _send_notification(title: str, message: str, tags: str = "bread"):
 
 
 def _sensor_loop():
-    global _oven_timer, _oven_on, _latest_distance_mm, _sensor_enabled
+    global _oven_timer, _oven_on, _latest_distance_mm, _sensor_enabled, _signal_fired
     print("[sensor_loop] thread gestart", flush=True)
     try:
         from sensor import VL53L1X
@@ -71,67 +72,15 @@ def _sensor_loop():
         while True:
             try:
                 sensor.connect()
-                AMBIENT_THRESHOLD = 10
-                JUMP_RESET_THRESHOLD = 10
-                prev_dist = None
-                reject_streak = 0
-                jump_streak = 0
-                fridge_open = False
-                no_data_streak = 0
                 while True:
                     if not _sensor_enabled:
                         time.sleep(5)
                         continue
-                    dist, ambient = sensor.read_distance_mm()
-                    print(f"[debug] dist={dist} ambient={ambient}", flush=True)
-                    if dist == -1:
-                        no_data_streak += 1
-                        if no_data_streak >= 5:
-                            raise RuntimeError(f"Sensor {no_data_streak}x geen data — herverbinden")
+                    dist = sensor.read_distance_mm()
+                    print(f"[debug] dist={dist}", flush=True)
+                    if dist < 0:
                         time.sleep(config.MEASURE_INTERVAL)
                         continue
-                    no_data_streak = 0
-                    if dist == -2:
-                        log.warning("[sensor] hoge spreiding")
-                        reject_streak += 1
-                        if reject_streak >= 4 and not fridge_open:
-                            log.info("[sensor] koelkast open gedetecteerd")
-                            fridge_open = True
-                        time.sleep(config.MEASURE_INTERVAL)
-                        continue
-                    if ambient > AMBIENT_THRESHOLD:
-                        log.info(f"[sensor] koelkast open (ambient): ambient={ambient}")
-                        _broadcast({"type": "fridge_open", "ambient": ambient})
-                        reject_streak += 1
-                        jump_streak = 0
-                        if reject_streak >= 4 and not fridge_open:
-                            fridge_open = True
-                        time.sleep(config.MEASURE_INTERVAL)
-                        continue
-                    if prev_dist is not None and abs(dist - prev_dist) > 80:
-                        jump_streak += 1
-                        reject_streak += 1
-                        log.info(f"[sensor] koelkast open (jump): dist={dist}, prev={prev_dist}, jump_streak={jump_streak}")
-                        if reject_streak >= 4 and not fridge_open:
-                            fridge_open = True
-                        if jump_streak >= JUMP_RESET_THRESHOLD:
-                            log.warning(f"[sensor] {jump_streak}x jump rejected — force-reset prev_dist {prev_dist}→{dist}")
-                            prev_dist = dist
-                            jump_streak = 0
-                            reject_streak = 0
-                            if fridge_open:
-                                _broadcast({"type": "fridge_closed"})
-                                fridge_open = False
-                        time.sleep(config.MEASURE_INTERVAL)
-                        continue
-                    if fridge_open:
-                        log.info("[sensor] koelkast dicht")
-                        _broadcast({"type": "fridge_closed"})
-                        time.sleep(60)
-                        fridge_open = False
-                    reject_streak = 0
-                    jump_streak = 0
-                    prev_dist = dist
                     with _lock:
                         _latest_distance_mm = dist
                         session = _active_session
@@ -149,10 +98,11 @@ def _sensor_loop():
                     db.log_measurement(session["id"], dist, rise_mm, rise_pct, speed)
                     all_m   = db.get_measurements(session["id"])
                     summary = analyzer.summarize(all_m)
-                    _broadcast({"type": "measurement", "ambient": ambient, "oven_on": _oven_on, **summary})
+                    _broadcast({"type": "measurement", "oven_on": _oven_on, **summary})
                     log.info(f"dist={dist}mm  rijs={rise_mm:.1f}mm  speed={speed:.2f}mm/u")
                     signal = analyzer.check_baking_moment(all_m)
-                    if signal.triggered and _oven_timer is None and not _oven_on:
+                    if signal.triggered and not _signal_fired and _oven_timer is None and not _oven_on:
+                        _signal_fired = True
                         _broadcast({"type": "oven_scheduled", "minutes": config.OVEN_PREHEAT_MIN,
                                     "reason": signal.reason, "ts": time.time()})
                         if _auto_oven_enabled:
@@ -240,7 +190,7 @@ def stream():
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _signal_fired
     body = request.json or {}
     notes        = body.get("notes", "")
     flour_type   = body.get("flour_type") or None
@@ -270,6 +220,7 @@ def api_start():
             _oven_timer.cancel()
         _oven_timer = None
         _oven_on = False
+        _signal_fired = False
     return jsonify({"ok": True, "session_id": session_id, "baseline_mm": dist})
 
 
@@ -372,7 +323,7 @@ def api_session_export(session_id):
 
 @app.route("/api/stop", methods=["POST"])
 def api_stop():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm, _signal_fired
     unclosed = db.list_unclosed_sessions()
     for sess in unclosed:
         db.end_session(sess["id"])
@@ -384,6 +335,7 @@ def api_stop():
             _oven_timer.cancel()
         _oven_timer = None
         _oven_on = False
+        _signal_fired = False
     _broadcast({"type": "sensor_paused"})
     _broadcast({"type": "no_session"})
     return jsonify({"ok": True, "closed": len(unclosed)})

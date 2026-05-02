@@ -2,7 +2,6 @@ import time
 import board
 import busio
 import adafruit_vl53l1x
-import config
 
 
 class VL53L1X:
@@ -19,20 +18,8 @@ class VL53L1X:
         self._sensor.start_ranging()
         print("[sensor] Verbonden via Adafruit library")
 
-    def _read_ambient(self) -> int:
-        buf = bytearray(2)
-        while not self._i2c.try_lock():
-            pass
-        try:
-            self._i2c.writeto(config.SENSOR_ADDR, bytes([0x00, 0x90]))
-            self._i2c.readfrom_into(config.SENSOR_ADDR, buf)
-        finally:
-            self._i2c.unlock()
-        return (buf[0] << 8) | buf[1]
-
-    def read_distance_mm(self, samples: int = 5) -> tuple:
+    def read_distance_mm(self, samples: int = 5) -> int:
         distances = []
-        ambients = []
         for _ in range(samples):
             timeout = 0
             while not self._sensor.data_ready:
@@ -42,24 +29,21 @@ class VL53L1X:
                     break
             if self._sensor.data_ready:
                 raw_cm = self._sensor.distance
-                ambients.append(self._read_ambient())
                 self._sensor.clear_interrupt()
                 if raw_cm is not None and raw_cm > 0:
                     distances.append(round(raw_cm * 10))
             time.sleep(0.1)
 
-        ambient_avg = round(sum(ambients) / len(ambients)) if ambients else 0
-
         if not distances:
-            return (-1, ambient_avg)
+            return -1
 
         mean = sum(distances) / len(distances)
         std_dev = (sum((d - mean) ** 2 for d in distances) / len(distances)) ** 0.5
         if std_dev > 15:
-            return (-2, ambient_avg)
+            return -2
 
         distances.sort()
-        return (distances[len(distances) // 2], ambient_avg)
+        return distances[len(distances) // 2]
 
     def close(self):
         self._safe_close()
@@ -84,3 +68,4 @@ class VL53L1X:
 
     def __exit__(self, *_):
         self.close()
+
