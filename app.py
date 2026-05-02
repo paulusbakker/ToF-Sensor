@@ -366,12 +366,24 @@ def api_admin_cleanup():
 if __name__ == "__main__":
     db.init_db()
 
-    # Sluit bij opstart alle niet-afgesloten sessies af
+    # Hervat de meest recente open sessie na reboot; sluit eventuele
+    # oudere openstaande sessies af (zou niet mogen, veiligheidsnet).
     unclosed = db.list_unclosed_sessions()
-    for sess in unclosed:
-        db.end_session(sess["id"])
     if unclosed:
-        log.info(f"[main] {len(unclosed)} open sessie(s) afgesloten bij opstart")
+        resume = unclosed[0]  # ORDER BY id DESC
+        for sess in unclosed[1:]:
+            db.end_session(sess["id"])
+        if len(unclosed) > 1:
+            log.warning(f"[main] {len(unclosed) - 1} extra open sessie(s) afgesloten")
+        _active_session = resume
+        if resume.get("oven_triggered"):
+            _signal_fired = True
+        if config.TUYA_ENABLED:
+            try:
+                _oven_on = bool(oven.get_status().get("on"))
+            except Exception:
+                _oven_on = False
+        log.info(f"[main] Sessie {resume['id']} hervat (signal_fired={_signal_fired}, oven_on={_oven_on})")
 
     threading.Thread(target=_sensor_loop, daemon=True).start()
     print("[main] sensor thread aangemaakt", flush=True)
