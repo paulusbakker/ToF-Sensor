@@ -1,6 +1,5 @@
 # ─── Sensor ───────────────────────────────────────────────
 I2C_BUS         = 1
-SENSOR_ADDR     = 0x29
 MEASURE_INTERVAL = 30          # seconden tussen metingen
 
 # ─── Database ─────────────────────────────────────────────
