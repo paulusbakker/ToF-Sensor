@@ -55,10 +55,12 @@ def check_baking_moment(measurements: list) -> BakingSignal:
     if last_smoothed < config.MIN_RISE_MM:
         return BakingSignal(False, f"Rijs < {config.MIN_RISE_MM} mm minimum")
     speeds = compute_speed(measurements)
-    positive_speeds = [s for s in speeds if s > 0]
-    if not positive_speeds:
+    window_full_after = measurements[0]["ts"] + config.SMOOTH_WINDOW_MIN * 60
+    valid_speeds = [s for i, s in enumerate(speeds)
+                    if s > 0 and measurements[i]["ts"] >= window_full_after]
+    if not valid_speeds:
         return BakingSignal(False, "Nog geen positieve rijssnelheid")
-    peak_speed = max(positive_speeds)
+    peak_speed = max(valid_speeds)
     current_speed = speeds[-1]
     ratio = current_speed / peak_speed if peak_speed > 0 else 1.0
     if ratio < config.PEAK_SPEED_RATIO and current_speed >= 0:

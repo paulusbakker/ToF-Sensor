@@ -27,6 +27,7 @@ _oven_on = False
 _auto_oven_enabled = config.AUTO_OVEN_ENABLED
 _sse_clients = []
 _latest_distance_mm = None
+_latest_distance_ts = 0.0
 _sensor_enabled = True
 _signal_fired = False
 
@@ -64,7 +65,7 @@ def _send_notification(title: str, message: str, tags: str = "bread"):
 
 
 def _sensor_loop():
-    global _oven_timer, _oven_on, _latest_distance_mm, _sensor_enabled, _signal_fired
+    global _oven_timer, _oven_on, _latest_distance_mm, _latest_distance_ts, _sensor_enabled, _signal_fired
     print("[sensor_loop] thread gestart", flush=True)
     try:
         from sensor import VL53L1X
@@ -83,6 +84,7 @@ def _sensor_loop():
                         continue
                     with _lock:
                         _latest_distance_mm = dist
+                        _latest_distance_ts = time.time()
                         session = _active_session
                     if session is None:
                         time.sleep(5)
@@ -188,7 +190,7 @@ def stream():
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _signal_fired
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _signal_fired, _latest_distance_mm, _latest_distance_ts
     body = request.json or {}
     notes        = body.get("notes", "")
     flour_type   = body.get("flour_type") or None
@@ -199,16 +201,23 @@ def api_start():
     for sess in db.list_unclosed_sessions():
         db.end_session(sess["id"])
 
+    with _lock:
+        _latest_distance_mm = None
+        _latest_distance_ts = 0.0
     _sensor_enabled = True
 
-    deadline = time.time() + 60
+    request_ts = time.time()
+    deadline = request_ts + 60
+    dist = None
     while time.time() < deadline:
         with _lock:
-            dist = _latest_distance_mm
-        if dist is not None and dist > 0:
+            d = _latest_distance_mm
+            ts = _latest_distance_ts
+        if d is not None and d > 0 and ts > request_ts:
+            dist = d
             break
         time.sleep(1)
-    else:
+    if dist is None:
         return jsonify({"ok": False, "error": "Geen sensordata beschikbaar (timeout)"}), 500
 
     session_id = db.start_session(float(dist), notes, flour_type, hydration)
@@ -327,13 +336,14 @@ def api_session_export(session_id):
 
 @app.route("/api/stop", methods=["POST"])
 def api_stop():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm, _signal_fired
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm, _latest_distance_ts, _signal_fired
     unclosed = db.list_unclosed_sessions()
     for sess in unclosed:
         db.end_session(sess["id"])
     with _lock:
         _active_session = None
         _latest_distance_mm = None
+        _latest_distance_ts = 0.0
         _sensor_enabled = False
         if _oven_timer:
             _oven_timer.cancel()
