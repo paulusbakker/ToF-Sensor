@@ -90,7 +90,7 @@ def _sensor_loop():
                     baseline = session["baseline_mm"]
                     rise_mm  = analyzer.compute_rise(dist, baseline)
                     rise_pct = analyzer.compute_rise_pct(rise_mm, baseline)
-                    recent   = db.get_last_n(session["id"], n=20)
+                    recent   = db.get_last_n(session["id"], n=60)
                     dummy    = recent + [{"ts": time.time(), "rise_mm": rise_mm,
                                           "rise_pct": rise_pct, "distance_mm": dist,
                                           "speed_mm_h": 0}]
