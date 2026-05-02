@@ -3,6 +3,8 @@ import config
 
 log = logging.getLogger(__name__)
 
+_simulated_state = False
+
 
 def _get_device():
     import tinytuya
@@ -16,7 +18,9 @@ def _get_device():
 
 
 def turn_on() -> bool:
+    global _simulated_state
     if not config.TUYA_ENABLED:
+        _simulated_state = True
         print("🔌 [oven] SIMULATIE: oven aan")
         return True
     try:
@@ -29,7 +33,9 @@ def turn_on() -> bool:
 
 
 def turn_off() -> bool:
+    global _simulated_state
     if not config.TUYA_ENABLED:
+        _simulated_state = False
         print("🔌 [oven] SIMULATIE: oven uit")
         return True
     try:
@@ -42,7 +48,7 @@ def turn_off() -> bool:
 
 def get_status() -> dict:
     if not config.TUYA_ENABLED:
-        return {"on": False, "simulated": True}
+        return {"on": _simulated_state, "simulated": True}
     try:
         data = _get_device().status()
         return {"on": bool(data.get("dps", {}).get("1", False))}
