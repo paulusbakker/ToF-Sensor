@@ -526,7 +526,17 @@ function initChart() {
     data: {
       datasets: [
         {
-          label: 'Rijs (mm)',
+          label: 'Rijs ruw (mm)',
+          data: [],
+          showLine: false,
+          borderColor:     'rgba(245,158,11,0.35)',
+          backgroundColor: 'rgba(245,158,11,0.35)',
+          pointRadius: 1.5,
+          pointHoverRadius: 3,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Rijs (mm, gladgemaakt)',
           data: [],
           borderColor:     '#f59e0b',
           backgroundColor: 'rgba(245,158,11,0.12)',
@@ -599,7 +609,8 @@ function updateChart() {
   const pts     = minutes ? allPoints.filter(p => p.ts >= cutoff) : allPoints;
 
   chart.data.datasets[0].data = pts.map(p => ({ x: p.ts * 1000, y: p.rise_mm  || 0 }));
-  chart.data.datasets[1].data = pts.map(p => ({ x: p.ts * 1000, y: Math.max(0, p.speed_mm_h || 0) }));
+  chart.data.datasets[1].data = pts.map(p => ({ x: p.ts * 1000, y: (p.rise_mm_smoothed != null ? p.rise_mm_smoothed : (p.rise_mm || 0)) }));
+  chart.data.datasets[2].data = pts.map(p => ({ x: p.ts * 1000, y: Math.max(0, p.speed_mm_h || 0) }));
 
   if (minutes) {
     chart.options.scales.x.min = cutoff * 1000;
@@ -768,9 +779,10 @@ function addPoint(d) {
   if (d.ts) {
     allPoints.push({
       ts: d.ts,
-      rise_mm:    d.rise_mm,
-      rise_pct:   d.rise_pct,
-      speed_mm_h: d.speed_mm_h,
+      rise_mm:          d.rise_mm,
+      rise_mm_smoothed: d.rise_mm_smoothed,
+      rise_pct:         d.rise_pct,
+      speed_mm_h:       d.speed_mm_h,
     });
   }
   applyData(d);
@@ -895,7 +907,7 @@ function connect() {
     else if (data.type === 'no_session') {
       allPoints = []; activeSessionId = null;
       clearOvenAnnotation();
-      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update('none'); }
+      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.data.datasets[2].data = []; chart.update('none'); }
       if (ovenTimer) { clearInterval(ovenTimer); ovenTimer = null; }
       setOvenState(false);
       document.getElementById('prediction-card').style.display = 'none';
@@ -937,7 +949,7 @@ async function confirmStart() {
       allPoints = [];
       selectedVerdict = null;
       clearOvenAnnotation();
-      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
+      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.data.datasets[2].data = []; chart.update(); }
       document.getElementById('oven-alert').classList.remove('visible');
       document.getElementById('verdict-card').style.display = 'none';
       document.getElementById('prediction-card').style.display = 'none';
@@ -1051,7 +1063,7 @@ async function stopSession() {
       activeSessionId = null;
       selectedVerdict = null;
       clearOvenAnnotation();
-      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
+      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.data.datasets[2].data = []; chart.update(); }
       document.getElementById('oven-alert').classList.remove('visible');
       document.getElementById('verdict-card').style.display = 'none';
       document.getElementById('prediction-card').style.display = 'none';

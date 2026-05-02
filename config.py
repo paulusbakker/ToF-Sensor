@@ -11,6 +11,7 @@ OVEN_PREHEAT_MIN  = 45         # minuten voorverwarmen
 AUTO_OVEN_ENABLED = False       # automatisch oven aansturen bij bakmoment
 MIN_RISE_MM       = 8          # minimale rijs voordat analyse start
 PEAK_SPEED_RATIO  = 0.30       # snelheid < 30% van piek → bijna klaar
+SMOOTH_WINDOW_MIN = 15         # rolling mean window (minuten) voor rijs-smoothing
 
 # ─── Oven (Tuya/tinytuya) ─────────────────────────────────
 # Stap 1: pip install tinytuya

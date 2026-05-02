@@ -298,8 +298,15 @@ function renderDetailChart(measurements) {
     data: {
       datasets: [
         {
-          label: 'Rijs (mm)',
+          label: 'Rijs ruw (mm)',
           data: measurements.map(m => ({ x: m.ts * 1000, y: m.rise_mm || 0 })),
+          showLine: false,
+          borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'rgba(245,158,11,0.35)',
+          pointRadius: 1.5, pointHoverRadius: 3, yAxisID: 'y',
+        },
+        {
+          label: 'Rijs (mm, gladgemaakt)',
+          data: measurements.map(m => ({ x: m.ts * 1000, y: (m.rise_mm_smoothed != null ? m.rise_mm_smoothed : (m.rise_mm || 0)) })),
           borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)',
           borderWidth: 2, pointRadius: 0, tension: 0.3, fill: true, yAxisID: 'y',
         },
