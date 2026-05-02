@@ -30,6 +30,8 @@ _latest_distance_mm = None
 _latest_distance_ts = 0.0
 _sensor_enabled = True
 _signal_fired = False
+_sensor_offline = False
+_last_successful_measurement_ts = 0.0
 
 
 def _enrich_measurements(measurements: list) -> list:
@@ -65,7 +67,7 @@ def _send_notification(title: str, message: str, tags: str = "bread"):
 
 
 def _sensor_loop():
-    global _oven_timer, _oven_on, _latest_distance_mm, _latest_distance_ts, _sensor_enabled, _signal_fired
+    global _oven_timer, _oven_on, _latest_distance_mm, _latest_distance_ts, _sensor_enabled, _signal_fired, _sensor_offline, _last_successful_measurement_ts
     print("[sensor_loop] thread gestart", flush=True)
     try:
         from sensor import VL53L1X
@@ -82,10 +84,17 @@ def _sensor_loop():
                     if dist < 0:
                         time.sleep(config.MEASURE_INTERVAL)
                         continue
+                    now = time.time()
                     with _lock:
                         _latest_distance_mm = dist
-                        _latest_distance_ts = time.time()
+                        _latest_distance_ts = now
+                        _last_successful_measurement_ts = now
                         session = _active_session
+                    if _sensor_offline:
+                        _sensor_offline = False
+                        _broadcast({"type": "sensor_online", "ts": now})
+                        _send_notification("✅ Sensor weer online",
+                                           "Metingen worden weer ontvangen", "white_check_mark")
                     if session is None:
                         time.sleep(5)
                         continue
@@ -132,6 +141,27 @@ def _sensor_loop():
     except Exception:
         print("[sensor_loop] fatale fout, thread stopt:", flush=True)
         traceback.print_exc()
+
+
+def _sensor_watchdog():
+    global _sensor_offline
+    while True:
+        time.sleep(30)
+        try:
+            with _lock:
+                session = _active_session
+                last_ts = _last_successful_measurement_ts
+            if session is None or last_ts == 0:
+                continue
+            gap = time.time() - last_ts
+            if gap > 120 and not _sensor_offline:
+                _sensor_offline = True
+                last_str = time.strftime("%H:%M", time.localtime(last_ts))
+                _broadcast({"type": "sensor_offline", "since": last_ts})
+                _send_notification("⚠️ Sensor offline",
+                                   f"Geen metingen sinds {last_str}", "warning")
+        except Exception as e:
+            log.warning(f"[watchdog] {e}")
 
 
 def _trigger_oven(session_id):
@@ -190,7 +220,7 @@ def stream():
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _signal_fired, _latest_distance_mm, _latest_distance_ts
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _signal_fired, _latest_distance_mm, _latest_distance_ts, _sensor_offline, _last_successful_measurement_ts
     body = request.json or {}
     notes        = body.get("notes", "")
     flour_type   = body.get("flour_type") or None
@@ -228,6 +258,8 @@ def api_start():
         _oven_timer = None
         _oven_on = False
         _signal_fired = False
+        _sensor_offline = False
+        _last_successful_measurement_ts = 0.0
     return jsonify({"ok": True, "session_id": session_id, "baseline_mm": dist})
 
 
@@ -337,7 +369,7 @@ def api_session_export(session_id):
 
 @app.route("/api/stop", methods=["POST"])
 def api_stop():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm, _latest_distance_ts, _signal_fired
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm, _latest_distance_ts, _signal_fired, _sensor_offline, _last_successful_measurement_ts
     unclosed = db.list_unclosed_sessions()
     for sess in unclosed:
         db.end_session(sess["id"])
@@ -351,6 +383,8 @@ def api_stop():
         _oven_timer = None
         _oven_on = False
         _signal_fired = False
+        _sensor_offline = False
+        _last_successful_measurement_ts = 0.0
     _broadcast({"type": "no_session"})
     return jsonify({"ok": True, "closed": len(unclosed)})
 
@@ -386,6 +420,7 @@ if __name__ == "__main__":
         log.info(f"[main] Sessie {resume['id']} hervat (signal_fired={_signal_fired}, oven_on={_oven_on})")
 
     threading.Thread(target=_sensor_loop, daemon=True).start()
+    threading.Thread(target=_sensor_watchdog, daemon=True).start()
     print("[main] sensor thread aangemaakt", flush=True)
     log.info(f"Dashboard: http://0.0.0.0:{config.FLASK_PORT}")
     app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, threaded=True, debug=False)
