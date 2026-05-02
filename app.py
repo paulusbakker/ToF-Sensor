@@ -28,6 +28,7 @@ _auto_oven_enabled = config.AUTO_OVEN_ENABLED
 _sse_clients = []
 _latest_distance_mm = None
 _sensor_enabled = True
+_signal_fired = False
 
 
 def _enrich_measurements(measurements: list) -> list:
@@ -63,7 +64,7 @@ def _send_notification(title: str, message: str, tags: str = "bread"):
 
 
 def _sensor_loop():
-    global _oven_timer, _oven_on, _latest_distance_mm, _sensor_enabled
+    global _oven_timer, _oven_on, _latest_distance_mm, _sensor_enabled, _signal_fired
     print("[sensor_loop] thread gestart", flush=True)
     try:
         from sensor import VL53L1X
@@ -152,7 +153,8 @@ def _sensor_loop():
                     _broadcast({"type": "measurement", "ambient": ambient, "oven_on": _oven_on, **summary})
                     log.info(f"dist={dist}mm  rijs={rise_mm:.1f}mm  speed={speed:.2f}mm/u")
                     signal = analyzer.check_baking_moment(all_m)
-                    if signal.triggered and _oven_timer is None and not _oven_on:
+                    if signal.triggered and not _signal_fired and _oven_timer is None and not _oven_on:
+                        _signal_fired = True
                         _broadcast({"type": "oven_scheduled", "minutes": config.OVEN_PREHEAT_MIN,
                                     "reason": signal.reason, "ts": time.time()})
                         if _auto_oven_enabled:
@@ -240,7 +242,7 @@ def stream():
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _signal_fired
     body = request.json or {}
     notes        = body.get("notes", "")
     flour_type   = body.get("flour_type") or None
@@ -270,6 +272,7 @@ def api_start():
             _oven_timer.cancel()
         _oven_timer = None
         _oven_on = False
+        _signal_fired = False
     return jsonify({"ok": True, "session_id": session_id, "baseline_mm": dist})
 
 
@@ -372,7 +375,7 @@ def api_session_export(session_id):
 
 @app.route("/api/stop", methods=["POST"])
 def api_stop():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm, _signal_fired
     unclosed = db.list_unclosed_sessions()
     for sess in unclosed:
         db.end_session(sess["id"])
@@ -384,6 +387,7 @@ def api_stop():
             _oven_timer.cancel()
         _oven_timer = None
         _oven_on = False
+        _signal_fired = False
     _broadcast({"type": "sensor_paused"})
     _broadcast({"type": "no_session"})
     return jsonify({"ok": True, "closed": len(unclosed)})
