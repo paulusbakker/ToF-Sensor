@@ -30,6 +30,12 @@ _latest_distance_mm = None
 _sensor_enabled = True
 
 
+def _enrich_measurements(measurements: list) -> list:
+    smoothed = analyzer.smooth_rise_series(measurements)
+    return [{**m, "rise_mm_smoothed": round(smoothed[i], 2)}
+            for i, m in enumerate(measurements)]
+
+
 def _broadcast(payload: dict):
     msg = f"data: {json.dumps(payload)}\n\n"
     with _lock:
@@ -210,7 +216,7 @@ def stream():
         with _lock:
             session = _active_session
         if session:
-            history = db.get_measurements(session["id"])
+            history = _enrich_measurements(db.get_measurements(session["id"]))
             summary = analyzer.summarize(history)
             yield f"data: {json.dumps({'type': 'history', 'points': history, 'oven_on': _oven_on, 'oven_at': session.get('oven_at'), **summary})}\n\n"
         else:
@@ -284,7 +290,8 @@ def api_settings():
     if request.method == "GET":
         return jsonify({"auto_oven": _auto_oven_enabled,
                         "preheat_min": config.OVEN_PREHEAT_MIN,
-                        "peak_speed_ratio": config.PEAK_SPEED_RATIO})
+                        "peak_speed_ratio": config.PEAK_SPEED_RATIO,
+                        "smooth_window_min": config.SMOOTH_WINDOW_MIN})
     body = request.json or {}
     with _lock:
         if "auto_oven" in body:
@@ -293,10 +300,12 @@ def api_settings():
             config.OVEN_PREHEAT_MIN = max(1, int(body["preheat_min"]))
     _broadcast({"type": "settings", "auto_oven": _auto_oven_enabled,
                 "preheat_min": config.OVEN_PREHEAT_MIN,
-                "peak_speed_ratio": config.PEAK_SPEED_RATIO})
+                "peak_speed_ratio": config.PEAK_SPEED_RATIO,
+                "smooth_window_min": config.SMOOTH_WINDOW_MIN})
     return jsonify({"ok": True, "auto_oven": _auto_oven_enabled,
                     "preheat_min": config.OVEN_PREHEAT_MIN,
-                    "peak_speed_ratio": config.PEAK_SPEED_RATIO})
+                    "peak_speed_ratio": config.PEAK_SPEED_RATIO,
+                    "smooth_window_min": config.SMOOTH_WINDOW_MIN})
 
 
 @app.route("/api/oven", methods=["POST"])
@@ -316,7 +325,7 @@ def api_history():
         session = _active_session
     if not session:
         return jsonify([])
-    return jsonify(db.get_measurements(session["id"]))
+    return jsonify(_enrich_measurements(db.get_measurements(session["id"])))
 
 
 # ── Sessie-geschiedenis API ────────────────────────────────
@@ -332,7 +341,7 @@ def api_session_detail(session_id):
     sess = next((s for s in sessions if s["id"] == session_id), None)
     if not sess:
         return jsonify({"error": "Niet gevonden"}), 404
-    measurements = db.get_measurements(session_id)
+    measurements = _enrich_measurements(db.get_measurements(session_id))
     return jsonify({"session": sess, "measurements": measurements})
 
 

@@ -2,11 +2,24 @@ from __future__ import annotations
 import config
 
 
-def _moving_avg(values: list, window: int = 5) -> list:
+def smooth_rise_series(measurements: list) -> list:
+    """Tijd-gebaseerde rolling mean van rise_mm over SMOOTH_WINDOW_MIN minuten.
+
+    Voor elke meting wordt het gemiddelde berekend over alle eerdere metingen
+    (incl. zichzelf) binnen het venster. Tijdens opstart is het venster
+    progressief: gebruik wat er beschikbaar is.
+    """
+    if not measurements:
+        return []
+    window_s = config.SMOOTH_WINDOW_MIN * 60
     result = []
-    for i, v in enumerate(values):
-        start = max(0, i - window + 1)
-        result.append(sum(values[start:i + 1]) / (i - start + 1))
+    start = 0
+    for i, m in enumerate(measurements):
+        ts_i = m["ts"]
+        while measurements[start]["ts"] < ts_i - window_s:
+            start += 1
+        window = measurements[start:i + 1]
+        result.append(sum(w["rise_mm"] for w in window) / len(window))
     return result
 
 
@@ -28,7 +41,7 @@ def compute_rise_pct(rise_mm: float, baseline_mm: float,
 def compute_speed(measurements: list) -> list:
     if len(measurements) < 2:
         return [0.0] * len(measurements)
-    rises = _moving_avg([m["rise_mm"] for m in measurements], window=5)
+    rises = smooth_rise_series(measurements)
     speeds = [0.0]
     for i in range(1, len(measurements)):
         dt_h = (measurements[i]["ts"] - measurements[i - 1]["ts"]) / 3600.0
@@ -72,9 +85,10 @@ def check_baking_moment(measurements: list) -> BakingSignal:
 
 def summarize(measurements: list) -> dict:
     if not measurements:
-        return {"rise_mm": 0, "rise_pct": 0, "speed_mm_h": 0,
+        return {"rise_mm": 0, "rise_mm_smoothed": 0, "rise_pct": 0, "speed_mm_h": 0,
                 "status": "waiting", "status_label": "Wacht op start…", "peak_speed": 0}
     last = measurements[-1]
+    smoothed = smooth_rise_series(measurements)
     speeds = compute_speed(measurements)
     peak_speed = max((s for s in speeds if s > 0), default=0)
     signal = check_baking_moment(measurements)
@@ -87,14 +101,15 @@ def summarize(measurements: list) -> dict:
     else:
         status, label = "waiting", "⏳ Wacht op rijs…"
     return {
-        "rise_mm":       round(last["rise_mm"] or 0, 1),
-        "rise_pct":      round(last["rise_pct"] or 0, 1),
-        "speed_mm_h":    round(last["speed_mm_h"] or 0, 2),
-        "distance_mm":   last["distance_mm"],
-        "status":        status,
-        "status_label":  label,
-        "signal":        signal.triggered,
-        "signal_reason": signal.reason,
-        "peak_speed":    round(peak_speed, 2),
-        "ts":            last["ts"],
+        "rise_mm":          round(last["rise_mm"] or 0, 1),
+        "rise_mm_smoothed": round(smoothed[-1], 1),
+        "rise_pct":         round(last["rise_pct"] or 0, 1),
+        "speed_mm_h":       round(last["speed_mm_h"] or 0, 2),
+        "distance_mm":      last["distance_mm"],
+        "status":           status,
+        "status_label":     label,
+        "signal":           signal.triggered,
+        "signal_reason":    signal.reason,
+        "peak_speed":       round(peak_speed, 2),
+        "ts":               last["ts"],
     }
