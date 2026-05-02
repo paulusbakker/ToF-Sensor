@@ -840,6 +840,15 @@ function connect() {
       setOvenState(data.oven_on);
       if (data.oven_on && data.ts) setOvenOnAnnotation(data.ts);
     }
+    else if (data.type === 'sensor_offline') {
+      const dot = document.getElementById('status-dot');
+      if (dot) dot.className = 'dot fire';
+      const since = data.since ? new Date(data.since * 1000).toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'}) : '';
+      setText('status-label', since ? `⚠️ Sensor offline sinds ${since}` : '⚠️ Sensor offline');
+    }
+    else if (data.type === 'sensor_online') {
+      setText('status-label', '✅ Sensor weer online');
+    }
     else if (data.type === 'settings') {
       setAutoMode(data.auto_oven);
       const pi = document.getElementById('preheat-min');
