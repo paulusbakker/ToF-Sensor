@@ -27,17 +27,6 @@ def compute_rise(distance_mm: int, baseline_mm: float) -> float:
     return max(0.0, baseline_mm - distance_mm)
 
 
-def compute_rise_pct(rise_mm: float, baseline_mm: float,
-                     container_bottom_mm=None) -> float:
-    if container_bottom_mm and container_bottom_mm > baseline_mm:
-        initial_height = container_bottom_mm - baseline_mm
-    else:
-        initial_height = 50.0
-    if initial_height <= 0:
-        return 0.0
-    return (rise_mm / initial_height) * 100.0
-
-
 def compute_speed(measurements: list) -> list:
     if len(measurements) < 2:
         return [0.0] * len(measurements)
@@ -86,7 +75,7 @@ def check_baking_moment(measurements: list) -> BakingSignal:
 
 def summarize(measurements: list) -> dict:
     if not measurements:
-        return {"rise_mm": 0, "rise_mm_smoothed": 0, "rise_pct": 0, "speed_mm_h": 0,
+        return {"rise_mm": 0, "rise_mm_smoothed": 0, "speed_mm_h": 0,
                 "status": "waiting", "status_label": "Wacht op start…", "peak_speed": 0}
     last = measurements[-1]
     smoothed = smooth_rise_series(measurements)
@@ -105,7 +94,6 @@ def summarize(measurements: list) -> dict:
     return {
         "rise_mm":          round(last["rise_mm"] or 0, 1),
         "rise_mm_smoothed": round(last_smoothed, 1),
-        "rise_pct":         round(last["rise_pct"] or 0, 1),
         "speed_mm_h":       round(last["speed_mm_h"] or 0, 2),
         "distance_mm":      last["distance_mm"],
         "status":           status,

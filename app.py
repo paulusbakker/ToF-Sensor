@@ -89,13 +89,11 @@ def _sensor_loop():
                         continue
                     baseline = session["baseline_mm"]
                     rise_mm  = analyzer.compute_rise(dist, baseline)
-                    rise_pct = analyzer.compute_rise_pct(rise_mm, baseline)
                     recent   = db.get_last_n(session["id"], n=60)
                     dummy    = recent + [{"ts": time.time(), "rise_mm": rise_mm,
-                                          "rise_pct": rise_pct, "distance_mm": dist,
-                                          "speed_mm_h": 0}]
+                                          "distance_mm": dist, "speed_mm_h": 0}]
                     speed = analyzer.compute_speed(dummy)[-1]
-                    db.log_measurement(session["id"], dist, rise_mm, rise_pct, speed)
+                    db.log_measurement(session["id"], dist, rise_mm, 0, speed)
                     all_m   = db.get_measurements(session["id"])
                     summary = analyzer.summarize(all_m)
                     _broadcast({"type": "measurement", "oven_on": _oven_on, **summary})
@@ -266,7 +264,13 @@ def api_oven():
     ok = oven.turn_on() if action == "on" else oven.turn_off()
     if ok:
         _oven_on = action == "on"
-        _broadcast({"type": "oven_state", "oven_on": _oven_on})
+        ts = time.time()
+        if action == "on":
+            with _lock:
+                session = _active_session
+            if session:
+                db.mark_oven_triggered(session["id"])
+        _broadcast({"type": "oven_state", "oven_on": _oven_on, "ts": ts})
     return jsonify({"ok": ok})
 
 
@@ -336,7 +340,6 @@ def api_stop():
         _oven_timer = None
         _oven_on = False
         _signal_fired = False
-    _broadcast({"type": "sensor_paused"})
     _broadcast({"type": "no_session"})
     return jsonify({"ok": True, "closed": len(unclosed)})
 
