@@ -95,7 +95,7 @@ def _sensor_loop():
                     dummy    = recent + [{"ts": time.time(), "rise_mm": rise_mm,
                                           "distance_mm": dist, "speed_mm_h": 0}]
                     speed = analyzer.compute_speed(dummy)[-1]
-                    db.log_measurement(session["id"], dist, rise_mm, 0, speed)
+                    db.log_measurement(session["id"], dist, rise_mm, speed)
                     all_m   = db.get_measurements(session["id"])
                     summary = analyzer.summarize(all_m)
                     _broadcast({"type": "measurement", "oven_on": _oven_on, **summary})
@@ -324,7 +324,8 @@ def api_session_verdict(session_id):
 def api_session_export(session_id):
     measurements = db.get_measurements(session_id)
     buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=["ts", "distance_mm", "rise_mm", "rise_pct", "speed_mm_h"])
+    w = csv.DictWriter(buf, fieldnames=["ts", "distance_mm", "rise_mm", "speed_mm_h"],
+                       extrasaction="ignore")
     w.writeheader()
     w.writerows(measurements)
     return Response(

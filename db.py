@@ -143,13 +143,13 @@ def mark_oven_triggered(session_id: int):
         )
 
 
-def log_measurement(session_id, distance_mm, rise_mm, rise_pct, speed_mm_h):
+def log_measurement(session_id, distance_mm, rise_mm, speed_mm_h):
     with _conn() as c:
         c.execute(
             """INSERT INTO measurements
-               (session_id, ts, distance_mm, rise_mm, rise_pct, speed_mm_h)
-               VALUES (?,?,?,?,?,?)""",
-            (session_id, time.time(), distance_mm, rise_mm, rise_pct, speed_mm_h),
+               (session_id, ts, distance_mm, rise_mm, speed_mm_h)
+               VALUES (?,?,?,?,?)""",
+            (session_id, time.time(), distance_mm, rise_mm, speed_mm_h),
         )
 
 
