@@ -809,6 +809,16 @@ function setText(id, val) {
   if (el) el.textContent = val;
 }
 
+async function parseJsonOrThrow(r) {
+  const txt = await r.text();
+  try {
+    return JSON.parse(txt);
+  } catch {
+    const snippet = txt.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+    throw new Error(`Server gaf geen JSON (HTTP ${r.status}). ${snippet}`);
+  }
+}
+
 // ── SSE ───────────────────────────────────────────────────
 function connect() {
   const evs = new EventSource('/stream');
@@ -894,7 +904,7 @@ async function confirmStart() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({notes, flour_type, hydration_pct})
     });
-    const d = await r.json();
+    const d = await parseJsonOrThrow(r);
     if (d.ok) {
       activeSessionId = d.session_id;
       allPoints = [];
@@ -989,7 +999,7 @@ async function saveSettings() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({auto_oven, preheat_min}),
     });
-    const d = await r.json();
+    const d = await parseJsonOrThrow(r);
     if (d.ok) { setAutoMode(d.auto_oven); showSettingsFeedback('✓ Opgeslagen'); }
   } catch (err) { showSettingsFeedback('Fout: ' + err.message); }
 }
@@ -997,7 +1007,7 @@ async function saveSettings() {
 async function loadSettings() {
   try {
     const r = await fetch('/api/settings');
-    const d = await r.json();
+    const d = await parseJsonOrThrow(r);
     setAutoMode(d.auto_oven);
     const pi = document.getElementById('preheat-min');
     if (pi) pi.value = d.preheat_min;
@@ -1008,7 +1018,7 @@ async function stopSession() {
   if (!confirm('Huidige sessie afsluiten?')) return;
   try {
     const r = await fetch('/api/stop', { method: 'POST' });
-    const d = await r.json();
+    const d = await parseJsonOrThrow(r);
     if (d.ok) {
       allPoints = [];
       activeSessionId = null;
@@ -1034,7 +1044,7 @@ async function controlOven(action) {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({action})
     });
-    const d = await r.json();
+    const d = await parseJsonOrThrow(r);
     if (d.ok) setOvenState(action === 'on');
     else alert('Oven commando mislukt');
   } catch (err) {
@@ -1048,11 +1058,11 @@ connect();
 loadSettings();
 
 // Check status bij laden
-fetch('/api/status').then(r => r.json()).then(d => {
+fetch('/api/status').then(parseJsonOrThrow).then(d => {
   if (!d.session) { showNoSession(); return; }
   activeSessionId = d.session.id;
   if (d.oven_on != null) setOvenState(d.oven_on);
-});
+}).catch(() => {});
 </script>
 </body>
 </html>

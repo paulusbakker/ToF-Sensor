@@ -20,6 +20,19 @@ log = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+
+@app.errorhandler(Exception)
+def _handle_uncaught(e):
+    from werkzeug.exceptions import HTTPException
+    if request.path.startswith("/api/"):
+        if isinstance(e, HTTPException):
+            return jsonify({"ok": False, "error": e.description}), e.code
+        log.exception(f"[api] onverwachte fout op {request.path}")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+    if isinstance(e, HTTPException):
+        return e
+    raise e
+
 _lock = threading.Lock()
 _active_session = None
 _oven_timer = None
