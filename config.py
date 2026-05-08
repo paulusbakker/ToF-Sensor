@@ -12,6 +12,7 @@ MIN_RISE_MM       = 8          # minimale rijs voordat analyse start
 PEAK_SPEED_RATIO  = 0.30       # snelheid < 30% van piek → bijna klaar
 SMOOTH_WINDOW_MIN = 15         # rolling mean window (minuten) voor rijs-smoothing
 TREND_WINDOW_MIN  = 40         # window (minuten) voor trend-snelheid (lin. regressie)
+SMOOTH_TREND_MIN  = 10         # rolling mean window (minuten) over de trend-snelheid
 SIGNAL_REMINDER_MIN = 20       # interval (minuten) voor herhaalde bakmoment-melding
 
 # ─── Oven (Tuya/tinytuya) ─────────────────────────────────
