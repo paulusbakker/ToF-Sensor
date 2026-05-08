@@ -41,6 +41,39 @@ def compute_speed(measurements: list) -> list:
     return speeds
 
 
+def trend_speed_series(measurements: list) -> list:
+    """Rolling lineaire-regressie helling van de gladgemaakte rijs over de
+    laatste TREND_WINDOW_MIN minuten. Geeft mm/uur per meetpunt.
+
+    Robuuster dan punt-tot-punt afgeleide: de noise van de 30 s sampling
+    middelt uit, maar de trend volgt nog steeds binnen ~minuten.
+    """
+    if not measurements:
+        return []
+    smoothed = smooth_rise_series(measurements)
+    window_s = config.TREND_WINDOW_MIN * 60
+    result = []
+    start = 0
+    for i, m in enumerate(measurements):
+        ts_i = m["ts"]
+        while measurements[start]["ts"] < ts_i - window_s:
+            start += 1
+        n = i - start + 1
+        if n < 3:
+            result.append(0.0)
+            continue
+        ts_mean = sum(measurements[k]["ts"] for k in range(start, i + 1)) / n
+        s_mean  = sum(smoothed[k] for k in range(start, i + 1)) / n
+        num = den = 0.0
+        for k in range(start, i + 1):
+            dt = measurements[k]["ts"] - ts_mean
+            num += dt * (smoothed[k] - s_mean)
+            den += dt * dt
+        slope_per_s = (num / den) if den > 0 else 0.0
+        result.append(slope_per_s * 3600.0)
+    return result
+
+
 class BakingSignal:
     def __init__(self, triggered: bool, reason: str = "", minutes_until_bake: int = 0):
         self.triggered = triggered
@@ -54,8 +87,9 @@ def check_baking_moment(measurements: list) -> BakingSignal:
     last_smoothed = smooth_rise_series(measurements)[-1]
     if last_smoothed < config.MIN_RISE_MM:
         return BakingSignal(False, f"Rijs < {config.MIN_RISE_MM} mm minimum")
-    speeds = compute_speed(measurements)
-    window_full_after = measurements[0]["ts"] + config.SMOOTH_WINDOW_MIN * 60
+    speeds = trend_speed_series(measurements)
+    warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN) * 60
+    window_full_after = measurements[0]["ts"] + warmup_s
     valid_speeds = [s for i, s in enumerate(speeds)
                     if s > 0 and measurements[i]["ts"] >= window_full_after]
     if not valid_speeds:
@@ -78,16 +112,23 @@ def check_baking_moment(measurements: list) -> BakingSignal:
 def summarize(measurements: list) -> dict:
     if not measurements:
         return {"rise_mm": 0, "rise_mm_smoothed": 0, "speed_mm_h": 0,
-                "status": "waiting", "status_label": "Wacht op start…", "peak_speed": 0}
+                "status": "waiting", "status_label": "Wacht op start…",
+                "peak_speed": 0, "pct_of_peak": 0}
     last = measurements[-1]
     smoothed = smooth_rise_series(measurements)
     last_smoothed = smoothed[-1]
-    speeds = compute_speed(measurements)
-    peak_speed = max((s for s in speeds if s > 0), default=0)
+    trend = trend_speed_series(measurements)
+    current_trend = trend[-1] if trend else 0.0
+    warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN) * 60
+    window_full_after = measurements[0]["ts"] + warmup_s
+    valid = [s for i, s in enumerate(trend)
+             if s > 0 and measurements[i]["ts"] >= window_full_after]
+    peak_speed = max(valid, default=0.0)
+    pct_of_peak = (current_trend / peak_speed * 100.0) if peak_speed > 0 else 0.0
     signal = check_baking_moment(measurements)
     if signal.triggered:
         status, label = "baking", "🔥 Bakmoment nadert!"
-    elif last.get("speed_mm_h") and last["speed_mm_h"] > 0.5:
+    elif current_trend > 0.5:
         status, label = "rising", "📈 Rijst actief"
     elif last_smoothed > config.MIN_RISE_MM:
         status, label = "slowing", "📉 Rijs vertraagt"
@@ -96,12 +137,13 @@ def summarize(measurements: list) -> dict:
     return {
         "rise_mm":          round(last["rise_mm"] or 0, 1),
         "rise_mm_smoothed": round(last_smoothed, 1),
-        "speed_mm_h":       round(last["speed_mm_h"] or 0, 2),
+        "speed_mm_h":       round(current_trend, 2),
         "distance_mm":      last["distance_mm"],
         "status":           status,
         "status_label":     label,
         "signal":           signal.triggered,
         "signal_reason":    signal.reason,
         "peak_speed":       round(peak_speed, 2),
+        "pct_of_peak":      round(pct_of_peak, 0),
         "ts":               last["ts"],
     }

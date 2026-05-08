@@ -153,15 +153,29 @@ def log_measurement(session_id, distance_mm, rise_mm, speed_mm_h):
         )
 
 
-def get_measurements(session_id: int, limit: int = 2000) -> list:
+def get_measurements(session_id: int, limit: int = None) -> list:
+    """Alle metingen van een sessie in chronologische volgorde.
+
+    Default geen limit (volledige sessie). Indien `limit` opgegeven, worden
+    de NIEUWSTE n metingen teruggegeven (DESC sample, daarna chronologisch
+    geordend) zodat de oudste data niet stilletjes verloren gaat.
+    """
     with _conn() as c:
+        if limit is None:
+            rows = c.execute(
+                """SELECT ts, distance_mm, rise_mm, rise_pct, speed_mm_h
+                   FROM measurements WHERE session_id=?
+                   ORDER BY ts ASC""",
+                (session_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
         rows = c.execute(
             """SELECT ts, distance_mm, rise_mm, rise_pct, speed_mm_h
                FROM measurements WHERE session_id=?
-               ORDER BY ts ASC LIMIT ?""",
+               ORDER BY ts DESC LIMIT ?""",
             (session_id, limit),
         ).fetchall()
-        return [dict(r) for r in rows]
+        return list(reversed([dict(r) for r in rows]))
 
 
 def get_last_n(session_id: int, n: int = 20) -> list:
