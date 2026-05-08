@@ -57,10 +57,20 @@ def _enrich_measurements(measurements: list) -> list:
     smoothed = analyzer.smooth_rise_series(measurements)
     trend    = analyzer.smooth_trend_speed_series(measurements)
     cutoff   = measurements[0]["ts"] + _trend_warmup_s() if measurements else 0
+    valid    = [s for i, s in enumerate(trend)
+                if s > 0 and measurements[i]["ts"] >= cutoff]
+    peak     = max(valid, default=0.0)
+
+    def _pct(i, m):
+        if m["ts"] < cutoff or peak <= 0:
+            return None
+        return round(trend[i] / peak * 100.0, 1)
+
     return [{**m,
              "rise_mm_smoothed":   round(smoothed[i], 2),
              "trend_speed_mm_h":   (round(trend[i], 2)
-                                    if m["ts"] >= cutoff else None)}
+                                    if m["ts"] >= cutoff else None),
+             "pct_of_peak":        _pct(i, m)}
             for i, m in enumerate(measurements)]
 
 
