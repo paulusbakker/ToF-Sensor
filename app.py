@@ -85,6 +85,40 @@ def _send_notification(title: str, message: str, tags: str = "bread",
         log.warning(f"[ntfy] Fout: {e}")
 
 
+class _SensorReadTimeout(Exception):
+    pass
+
+
+def _read_with_timeout(sensor, timeout_s: float = 20.0) -> int:
+    """Roep sensor.read_distance_mm() aan met een wall-clock timeout.
+
+    De Adafruit-library kan in zeldzame gevallen blijven hangen op I2C
+    zonder exception. We draaien de read in een thread en wachten op
+    join(); als die niet terugkomt gooien we een exception zodat de
+    outer reconnect-loop in _sensor_loop opnieuw verbindt.
+
+    De thread zelf kunnen we niet killen — die blijft in het ergste
+    geval hangen tot de library er zelf uit komt. De volgende connect()
+    in de loop deinit() de bus, wat hem doorgaans loswrikt.
+    """
+    holder = {}
+
+    def _runner():
+        try:
+            holder["value"] = sensor.read_distance_mm()
+        except BaseException as e:
+            holder["error"] = e
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join(timeout_s)
+    if t.is_alive():
+        raise _SensorReadTimeout(f"sensor read >{timeout_s}s zonder antwoord")
+    if "error" in holder:
+        raise holder["error"]
+    return holder["value"]
+
+
 def _sensor_loop():
     global _oven_timer, _oven_on, _latest_distance_mm, _latest_distance_ts, _sensor_enabled, _signal_fired, _last_signal_reminder_ts, _sensor_offline, _last_successful_measurement_ts
     print("[sensor_loop] thread gestart", flush=True)
@@ -98,7 +132,7 @@ def _sensor_loop():
                     if not _sensor_enabled:
                         time.sleep(5)
                         continue
-                    dist = sensor.read_distance_mm()
+                    dist = _read_with_timeout(sensor)
                     print(f"[debug] dist={dist}", flush=True)
                     if dist < 0:
                         time.sleep(config.MEASURE_INTERVAL)
@@ -131,6 +165,7 @@ def _sensor_loop():
                     signal = analyzer.check_baking_moment(all_m)
                     if signal.triggered and not _signal_fired and _oven_timer is None and not _oven_on:
                         _signal_fired = True
+                        db.mark_signal_fired(session["id"])
                         _broadcast({"type": "oven_scheduled", "minutes": config.OVEN_PREHEAT_MIN,
                                     "reason": signal.reason, "ts": time.time()})
                         if _auto_oven_enabled:
@@ -461,7 +496,7 @@ if __name__ == "__main__":
         if len(unclosed) > 1:
             log.warning(f"[main] {len(unclosed) - 1} extra open sessie(s) afgesloten")
         _active_session = resume
-        if resume.get("oven_triggered"):
+        if resume.get("signal_fired_at") or resume.get("oven_triggered"):
             _signal_fired = True
         if config.TUYA_ENABLED:
             try:

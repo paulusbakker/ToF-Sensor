@@ -40,6 +40,7 @@ def init_db():
             ("peak_speed_mm_h", "ALTER TABLE sessions ADD COLUMN peak_speed_mm_h REAL"),
             ("total_rise_mm",   "ALTER TABLE sessions ADD COLUMN total_rise_mm REAL"),
             ("ended_at",        "ALTER TABLE sessions ADD COLUMN ended_at REAL"),
+            ("signal_fired_at", "ALTER TABLE sessions ADD COLUMN signal_fired_at REAL"),
         ]
         for col, sql in migrations:
             if col not in existing:
@@ -132,6 +133,14 @@ def set_session_verdict(session_id: int, verdict: str, notes: str = ""):
         c.execute(
             "UPDATE sessions SET verdict=?, verdict_notes=? WHERE id=?",
             (verdict, notes, session_id),
+        )
+
+
+def mark_signal_fired(session_id: int):
+    with _conn() as c:
+        c.execute(
+            "UPDATE sessions SET signal_fired_at=? WHERE id=? AND signal_fired_at IS NULL",
+            (time.time(), session_id),
         )
 
 
