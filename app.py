@@ -43,6 +43,7 @@ _latest_distance_mm = None
 _latest_distance_ts = 0.0
 _sensor_enabled = True
 _signal_fired = False
+_last_signal_reminder_ts = 0.0
 _sensor_offline = False
 _last_successful_measurement_ts = 0.0
 
@@ -66,13 +67,18 @@ def _broadcast(payload: dict):
             _sse_clients.remove(q)
 
 
-def _send_notification(title: str, message: str, tags: str = "bread"):
+def _send_notification(title: str, message: str, tags: str = "bread",
+                       priority: str = "default"):
+    """Stuur ntfy-notificatie. `priority` is een ntfy-prio: min, low,
+    default, high, urgent. Urgent breekt door DND op de meeste clients heen.
+    """
     if not config.NTFY_ENABLED:
         return
     try:
         requests.post(
             f"{config.NTFY_URL}/{config.NTFY_TOPIC}",
-            json={"title": title, "message": message, "tags": [tags]},
+            json={"title": title, "message": message, "tags": [tags],
+                  "priority": priority},
             timeout=5,
         )
     except Exception as e:
@@ -80,7 +86,7 @@ def _send_notification(title: str, message: str, tags: str = "bread"):
 
 
 def _sensor_loop():
-    global _oven_timer, _oven_on, _latest_distance_mm, _latest_distance_ts, _sensor_enabled, _signal_fired, _sensor_offline, _last_successful_measurement_ts
+    global _oven_timer, _oven_on, _latest_distance_mm, _latest_distance_ts, _sensor_enabled, _signal_fired, _last_signal_reminder_ts, _sensor_offline, _last_successful_measurement_ts
     print("[sensor_loop] thread gestart", flush=True)
     try:
         from sensor import VL53L1X
@@ -132,6 +138,7 @@ def _sensor_loop():
                                 "🔥 Oven gepland!",
                                 f"Oven gaat over {config.OVEN_PREHEAT_MIN} min automatisch aan\nRijs: {rise_mm:.1f}mm",
                                 "fire",
+                                priority="urgent",
                             )
                             delay_s = config.OVEN_PREHEAT_MIN * 60
                             _oven_timer = threading.Timer(delay_s, _trigger_oven, args=[session["id"]])
@@ -141,7 +148,9 @@ def _sensor_loop():
                                 "🔥 Bakmoment bereikt!",
                                 f"Zet de oven handmatig aan\nRijs: {rise_mm:.1f}mm",
                                 "fire",
+                                priority="urgent",
                             )
+                        _last_signal_reminder_ts = time.time()
                     time.sleep(config.MEASURE_INTERVAL)
             except Exception as e:
                 log.error(f"[sensor] {e} — herverbinden in 10s")
@@ -175,6 +184,33 @@ def _sensor_watchdog():
                                    f"Geen metingen sinds {last_str}", "warning")
         except Exception as e:
             log.warning(f"[watchdog] {e}")
+
+
+def _signal_reminder_loop():
+    """Stuurt periodieke urgent NTFY herinneringen zolang het bakmoment-
+    signaal actief is, de oven nog uit staat en er een sessie loopt.
+    Stopt automatisch zodra de oven aan gaat of de sessie eindigt.
+    """
+    global _last_signal_reminder_ts
+    while True:
+        time.sleep(60)
+        try:
+            with _lock:
+                session = _active_session
+            if not (_signal_fired and session and not _oven_on):
+                continue
+            interval_s = max(60, config.SIGNAL_REMINDER_MIN * 60)
+            if time.time() - _last_signal_reminder_ts < interval_s:
+                continue
+            _last_signal_reminder_ts = time.time()
+            _send_notification(
+                "🔥 Bakmoment — herinnering",
+                "Het deeg staat nog te wachten. Zet de oven aan zodra je kunt.",
+                "fire",
+                priority="urgent",
+            )
+        except Exception as e:
+            log.warning(f"[signal-reminder] {e}")
 
 
 def _trigger_oven(session_id):
@@ -233,7 +269,7 @@ def stream():
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _signal_fired, _latest_distance_mm, _latest_distance_ts, _sensor_offline, _last_successful_measurement_ts
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _signal_fired, _last_signal_reminder_ts, _latest_distance_mm, _latest_distance_ts, _sensor_offline, _last_successful_measurement_ts
     body = request.json or {}
     notes        = body.get("notes", "")
     flour_type   = body.get("flour_type") or None
@@ -271,6 +307,7 @@ def api_start():
         _oven_timer = None
         _oven_on = False
         _signal_fired = False
+        _last_signal_reminder_ts = 0.0
         _sensor_offline = False
         _last_successful_measurement_ts = 0.0
     return jsonify({"ok": True, "session_id": session_id, "baseline_mm": dist})
@@ -382,7 +419,7 @@ def api_session_export(session_id):
 
 @app.route("/api/stop", methods=["POST"])
 def api_stop():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm, _latest_distance_ts, _signal_fired, _sensor_offline, _last_successful_measurement_ts
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm, _latest_distance_ts, _signal_fired, _last_signal_reminder_ts, _sensor_offline, _last_successful_measurement_ts
     unclosed = db.list_unclosed_sessions()
     for sess in unclosed:
         db.end_session(sess["id"])
@@ -396,6 +433,7 @@ def api_stop():
         _oven_timer = None
         _oven_on = False
         _signal_fired = False
+        _last_signal_reminder_ts = 0.0
         _sensor_offline = False
         _last_successful_measurement_ts = 0.0
     _broadcast({"type": "no_session"})
@@ -434,6 +472,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=_sensor_loop, daemon=True).start()
     threading.Thread(target=_sensor_watchdog, daemon=True).start()
+    threading.Thread(target=_signal_reminder_loop, daemon=True).start()
     print("[main] sensor thread aangemaakt", flush=True)
     log.info(f"Dashboard: http://0.0.0.0:{config.FLASK_PORT}")
     app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, threaded=True, debug=False)

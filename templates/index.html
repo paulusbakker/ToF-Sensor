@@ -116,6 +116,10 @@
   }
   .metric .value.speed { font-size: 1.6rem; color: var(--blue); }
   .metric .unit { font-size: 0.7rem; color: var(--muted); margin-top: 4px; }
+  .metric .value-sub {
+    font-size: 0.95rem; font-weight: 700; color: var(--blue);
+    margin-top: 6px; opacity: 0.85;
+  }
   .metric .label { font-size: 0.75rem; color: var(--cream); margin-top: 6px; opacity: 0.7; }
 
   /* ── Alert banner ── */
@@ -393,7 +397,8 @@
       </div>
       <div class="metric" style="grid-column:1/-1">
         <div class="value speed" id="speed">—</div>
-        <div class="unit">mm/uur</div>
+        <div class="unit">mm/uur (trend, 20 min)</div>
+        <div class="value-sub" id="pct-of-peak">—</div>
         <div class="label">Rijssnelheid</div>
       </div>
     </div>
@@ -528,17 +533,6 @@ function initChart() {
           tension: 0.3,
           fill: true,
           yAxisID: 'y',
-        },
-        {
-          label: 'Snelheid (mm/u)',
-          data: [],
-          borderColor:     '#60a5fa',
-          backgroundColor: 'transparent',
-          borderWidth: 1.5,
-          pointRadius: 0,
-          tension: 0.4,
-          borderDash: [4, 3],
-          yAxisID: 'y2',
         }
       ]
     },
@@ -560,12 +554,6 @@ function initChart() {
           grid:  { color: '#ffffff0a' },
           ticks: { color: '#f59e0b', font: { size: 10 },
                    callback: v => v + ' mm' },
-        },
-        y2: {
-          position: 'right',
-          grid: { display: false },
-          ticks: { color: '#60a5fa', font: { size: 10 },
-                   callback: v => v + ' mm/u' },
         }
       },
       plugins: {
@@ -593,7 +581,6 @@ function updateChart() {
 
   chart.data.datasets[0].data = pts.map(p => ({ x: p.ts * 1000, y: p.rise_mm  || 0 }));
   chart.data.datasets[1].data = pts.map(p => ({ x: p.ts * 1000, y: (p.rise_mm_smoothed != null ? p.rise_mm_smoothed : (p.rise_mm || 0)) }));
-  chart.data.datasets[2].data = pts.map(p => ({ x: p.ts * 1000, y: Math.max(0, p.speed_mm_h || 0) }));
 
   if (minutes) {
     chart.options.scales.x.min = cutoff * 1000;
@@ -729,6 +716,10 @@ function applyData(d) {
   // Metrics
   setText('rise-mm',  d.rise_mm  != null ? d.rise_mm.toFixed(1)  : '—');
   setText('speed',    d.speed_mm_h != null ? d.speed_mm_h.toFixed(2) : '—');
+  setText('pct-of-peak',
+    d.peak_speed && d.peak_speed > 0 && d.pct_of_peak != null
+      ? Math.round(d.pct_of_peak) + '% van piek'
+      : '—');
   setText('dist-badge', d.distance_mm ? d.distance_mm + ' mm sensor' : '');
   setText('status-label', d.status_label || '');
   setText('signal-text',  d.signal_reason || '');
@@ -868,7 +859,7 @@ function connect() {
     else if (data.type === 'no_session') {
       allPoints = []; activeSessionId = null;
       clearOvenAnnotation();
-      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.data.datasets[2].data = []; chart.update('none'); }
+      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update('none'); }
       if (ovenTimer) { clearInterval(ovenTimer); ovenTimer = null; }
       setOvenState(false);
       document.getElementById('prediction-card').style.display = 'none';
@@ -910,7 +901,7 @@ async function confirmStart() {
       allPoints = [];
       selectedVerdict = null;
       clearOvenAnnotation();
-      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.data.datasets[2].data = []; chart.update(); }
+      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
       document.getElementById('oven-alert').classList.remove('visible');
       document.getElementById('verdict-card').style.display = 'none';
       document.getElementById('prediction-card').style.display = 'none';
@@ -1024,7 +1015,7 @@ async function stopSession() {
       activeSessionId = null;
       selectedVerdict = null;
       clearOvenAnnotation();
-      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.data.datasets[2].data = []; chart.update(); }
+      if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
       document.getElementById('oven-alert').classList.remove('visible');
       document.getElementById('verdict-card').style.display = 'none';
       document.getElementById('prediction-card').style.display = 'none';
