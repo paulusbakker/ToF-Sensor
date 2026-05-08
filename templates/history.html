@@ -320,12 +320,13 @@ function renderDetailChart(measurements) {
           borderWidth: 2.5, pointRadius: 0, tension: 0.3, fill: true, yAxisID: 'y',
         },
         {
-          label: 'Trend-snelheid (mm/u)',
+          label: '% van piek',
           data: measurements.map(m => ({ x: m.ts * 1000,
-                                          y: m.trend_speed_mm_h != null ? m.trend_speed_mm_h : null })),
-          borderColor: 'rgba(96,165,250,0.4)', backgroundColor: 'transparent',
+                                          y: m.pct_of_peak != null ? m.pct_of_peak : null })),
+          borderColor: 'rgba(96,165,250,0.6)', backgroundColor: 'transparent',
           borderWidth: 1.5, pointRadius: 0,
           tension: 0.4, cubicInterpolationMode: 'monotone',
+          borderDash: [4, 4],
           fill: false, spanGaps: false, yAxisID: 'y2',
         }
       ]
@@ -347,8 +348,8 @@ function renderDetailChart(measurements) {
         },
         y2: {
           position: 'right', grid: { display: false },
-          min: 0,
-          ticks: { color: '#60a5fa', font: { size: 10 }, callback: v => v + ' mm/u' },
+          min: 0, max: 110,
+          ticks: { color: '#60a5fa', font: { size: 10 }, callback: v => v + '%' },
         }
       },
       plugins: {
