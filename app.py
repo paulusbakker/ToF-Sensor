@@ -48,14 +48,15 @@ _sensor_offline = False
 _last_successful_measurement_ts = 0.0
 
 
+def _trend_warmup_s() -> int:
+    return (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN
+            + config.SMOOTH_TREND_MIN) * 60
+
+
 def _enrich_measurements(measurements: list) -> list:
     smoothed = analyzer.smooth_rise_series(measurements)
-    trend    = analyzer.trend_speed_series(measurements)
-    if measurements:
-        warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN) * 60
-        cutoff   = measurements[0]["ts"] + warmup_s
-    else:
-        cutoff = 0
+    trend    = analyzer.smooth_trend_speed_series(measurements)
+    cutoff   = measurements[0]["ts"] + _trend_warmup_s() if measurements else 0
     return [{**m,
              "rise_mm_smoothed":   round(smoothed[i], 2),
              "trend_speed_mm_h":   (round(trend[i], 2)
@@ -66,9 +67,8 @@ def _enrich_measurements(measurements: list) -> list:
 def _peak_trend_speed(measurements: list) -> float:
     if not measurements:
         return 0.0
-    trend = analyzer.trend_speed_series(measurements)
-    warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN) * 60
-    cutoff   = measurements[0]["ts"] + warmup_s
+    trend = analyzer.smooth_trend_speed_series(measurements)
+    cutoff = measurements[0]["ts"] + _trend_warmup_s()
     valid = [s for i, s in enumerate(trend)
              if s > 0 and measurements[i]["ts"] >= cutoff]
     return round(max(valid, default=0.0), 2)

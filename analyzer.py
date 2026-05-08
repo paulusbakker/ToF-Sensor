@@ -74,6 +74,29 @@ def trend_speed_series(measurements: list) -> list:
     return result
 
 
+def smooth_trend_speed_series(measurements: list) -> list:
+    """Tijd-gebaseerde rolling mean over trend_speed_series, breedte
+    SMOOTH_TREND_MIN minuten. Tweede smoothing-laag: de eerste laag
+    (smooth_rise_series) verandert de discrete 1mm-trapfunctie van de
+    sensor in een trapfunctie met kleinere stappen, waarvan de
+    regressie-afgeleide alsnog spikes vertoont bij elke trap. Een
+    rolling mean over die afgeleide middelt die spikes uit.
+    """
+    if not measurements:
+        return []
+    raw = trend_speed_series(measurements)
+    window_s = config.SMOOTH_TREND_MIN * 60
+    result = []
+    start = 0
+    for i, m in enumerate(measurements):
+        ts_i = m["ts"]
+        while measurements[start]["ts"] < ts_i - window_s:
+            start += 1
+        window = raw[start:i + 1]
+        result.append(sum(window) / len(window))
+    return result
+
+
 class BakingSignal:
     def __init__(self, triggered: bool, reason: str = "", minutes_until_bake: int = 0):
         self.triggered = triggered
@@ -87,8 +110,9 @@ def check_baking_moment(measurements: list) -> BakingSignal:
     last_smoothed = smooth_rise_series(measurements)[-1]
     if last_smoothed < config.MIN_RISE_MM:
         return BakingSignal(False, f"Rijs < {config.MIN_RISE_MM} mm minimum")
-    speeds = trend_speed_series(measurements)
-    warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN) * 60
+    speeds = smooth_trend_speed_series(measurements)
+    warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN
+                + config.SMOOTH_TREND_MIN) * 60
     window_full_after = measurements[0]["ts"] + warmup_s
     valid_speeds = [s for i, s in enumerate(speeds)
                     if s > 0 and measurements[i]["ts"] >= window_full_after]
@@ -117,9 +141,10 @@ def summarize(measurements: list) -> dict:
     last = measurements[-1]
     smoothed = smooth_rise_series(measurements)
     last_smoothed = smoothed[-1]
-    trend = trend_speed_series(measurements)
+    trend = smooth_trend_speed_series(measurements)
     current_trend = trend[-1] if trend else 0.0
-    warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN) * 60
+    warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN
+                + config.SMOOTH_TREND_MIN) * 60
     window_full_after = measurements[0]["ts"] + warmup_s
     valid = [s for i, s in enumerate(trend)
              if s > 0 and measurements[i]["ts"] >= window_full_after]
