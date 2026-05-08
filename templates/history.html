@@ -302,14 +302,14 @@ function renderDetailChart(measurements) {
           label: 'Rijs ruw (mm)',
           data: measurements.map(m => ({ x: m.ts * 1000, y: m.rise_mm || 0 })),
           showLine: false,
-          borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'rgba(245,158,11,0.35)',
-          pointRadius: 1.5, pointHoverRadius: 3, yAxisID: 'y',
+          borderColor: 'rgba(146,129,106,0.25)', backgroundColor: 'rgba(146,129,106,0.25)',
+          pointRadius: 1, pointHoverRadius: 3, yAxisID: 'y',
         },
         {
           label: 'Rijs (mm, gladgemaakt)',
           data: measurements.map(m => ({ x: m.ts * 1000, y: (m.rise_mm_smoothed != null ? m.rise_mm_smoothed : (m.rise_mm || 0)) })),
           borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)',
-          borderWidth: 2, pointRadius: 0, tension: 0.3, fill: true, yAxisID: 'y',
+          borderWidth: 2.5, pointRadius: 0, tension: 0.3, fill: true, yAxisID: 'y',
         },
         {
           label: 'Trend-snelheid (mm/u)',
@@ -336,6 +336,7 @@ function renderDetailChart(measurements) {
         },
         y2: {
           position: 'right', grid: { display: false },
+          min: 0,
           ticks: { color: '#60a5fa', font: { size: 10 }, callback: v => v + ' mm/u' },
         }
       },
