@@ -309,13 +309,6 @@ function renderDetailChart(measurements) {
           data: measurements.map(m => ({ x: m.ts * 1000, y: (m.rise_mm_smoothed != null ? m.rise_mm_smoothed : (m.rise_mm || 0)) })),
           borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)',
           borderWidth: 2, pointRadius: 0, tension: 0.3, fill: true, yAxisID: 'y',
-        },
-        {
-          label: 'Snelheid (mm/u)',
-          data: measurements.map(m => ({ x: m.ts * 1000, y: Math.max(0, m.speed_mm_h || 0) })),
-          borderColor: '#60a5fa', backgroundColor: 'transparent',
-          borderWidth: 1.5, pointRadius: 0, tension: 0.4,
-          borderDash: [4, 3], yAxisID: 'y2',
         }
       ]
     },
@@ -333,10 +326,6 @@ function renderDetailChart(measurements) {
           position: 'left',
           grid: { color: '#ffffff0a' },
           ticks: { color: '#f59e0b', font: { size: 10 }, callback: v => v + ' mm' },
-        },
-        y2: {
-          position: 'right', grid: { display: false },
-          ticks: { color: '#60a5fa', font: { size: 10 }, callback: v => v + ' mm/u' },
         }
       },
       plugins: {
