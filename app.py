@@ -51,9 +51,15 @@ _last_successful_measurement_ts = 0.0
 def _enrich_measurements(measurements: list) -> list:
     smoothed = analyzer.smooth_rise_series(measurements)
     trend    = analyzer.trend_speed_series(measurements)
+    if measurements:
+        warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN) * 60
+        cutoff   = measurements[0]["ts"] + warmup_s
+    else:
+        cutoff = 0
     return [{**m,
              "rise_mm_smoothed":   round(smoothed[i], 2),
-             "trend_speed_mm_h":   round(trend[i], 2)}
+             "trend_speed_mm_h":   (round(trend[i], 2)
+                                    if m["ts"] >= cutoff else None)}
             for i, m in enumerate(measurements)]
 
 

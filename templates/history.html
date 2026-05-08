@@ -8,6 +8,14 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<script>
+  // Defensief: chartjs-plugin-annotation registreert zichzelf normaal
+  // automatisch op Chart, maar in sommige UMD-loads gaat dat mis.
+  // Forceer de registratie als de globale plugin beschikbaar is.
+  if (typeof Chart !== 'undefined' && typeof window['chartjs-plugin-annotation'] !== 'undefined') {
+    try { Chart.register(window['chartjs-plugin-annotation']); } catch (e) {}
+  }
+</script>
 <style>
   :root {
     --bg:     #1a1008;
@@ -313,9 +321,11 @@ function renderDetailChart(measurements) {
         },
         {
           label: 'Trend-snelheid (mm/u)',
-          data: measurements.map(m => ({ x: m.ts * 1000, y: m.trend_speed_mm_h != null ? m.trend_speed_mm_h : 0 })),
+          data: measurements.map(m => ({ x: m.ts * 1000,
+                                          y: m.trend_speed_mm_h != null ? m.trend_speed_mm_h : null })),
           borderColor: '#60a5fa', backgroundColor: 'transparent',
-          borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, yAxisID: 'y2',
+          borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false,
+          spanGaps: false, yAxisID: 'y2',
         }
       ]
     },
@@ -346,10 +356,14 @@ function renderDetailChart(measurements) {
           backgroundColor: '#2a1e0e', borderColor: '#4a3520', borderWidth: 1,
           titleColor: '#fef3c7', bodyColor: '#92816a',
         },
-        annotation: { annotations: _detailAnnotations(measurements) }
+        annotation: { annotations: {} }
       }
     }
   });
+  // Set annotations na constructie en force update — zelfde patroon als
+  // de live chart, daar werkt het betrouwbaar.
+  detailChart.options.plugins.annotation.annotations = _detailAnnotations(measurements);
+  detailChart.update('none');
 }
 
 function _detailAnnotations(measurements) {
