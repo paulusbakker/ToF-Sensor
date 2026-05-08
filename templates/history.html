@@ -371,11 +371,14 @@ function renderDetailChart(measurements) {
 function _detailAnnotations(measurements) {
   const a = {};
   if (!detailSession || !measurements || measurements.length === 0) return a;
-  const tStart = measurements[0].ts * 1000;
-  const tEnd   = measurements[measurements.length - 1].ts * 1000;
-  const mid    = (tStart + tEnd) / 2;
   const sigTs  = detailSession.signal_fired_at;
   const ovenTs = detailSession.oven_at;
+  // Plugin-annotation v3.0.1 'position' op een verticale lijn-label
+  // gedraagt zich grillig: in deze versie blijft het label vaak boven
+  // staan ongeacht 'start'/'end'. Gebruik daarom een aparte type:'label'
+  // annotatie verankerd op een vaste y-coördinaat (op de y2 % van piek-
+  // schaal, vlak boven nul) zodat het label gegarandeerd onder de
+  // datacurves valt.
   if (sigTs) {
     const x = sigTs * 1000;
     a.signalLine = {
@@ -383,15 +386,16 @@ function _detailAnnotations(measurements) {
       drawTime: 'afterDatasetsDraw',
       xMin: x, xMax: x,
       borderColor: '#f59e0b', borderWidth: 3, borderDash: [5, 4],
-      label: {
-        content: '🔥 Bakmoment',
-        display: true,
-        position: 'end',
-        yAdjust: -8,
-        color: '#f59e0b',
-        backgroundColor: 'rgba(26,16,8,0.95)',
-        font: { size: 11 }, padding: 4,
-      }
+    };
+    a.signalLabel = {
+      type: 'label',
+      drawTime: 'afterDatasetsDraw',
+      xValue: x, yValue: 6, xScaleID: 'x', yScaleID: 'y2',
+      content: ['🔥 Bakmoment'],
+      color: '#f59e0b',
+      backgroundColor: 'rgba(26,16,8,0.95)',
+      borderColor: '#f59e0b', borderWidth: 1,
+      font: { size: 11 }, padding: 4,
     };
   }
   if (ovenTs) {
@@ -401,15 +405,16 @@ function _detailAnnotations(measurements) {
       drawTime: 'afterDatasetsDraw',
       xMin: x, xMax: x,
       borderColor: '#f87171', borderWidth: 3,
-      label: {
-        content: '🔥 Oven aan',
-        display: true,
-        position: 'end',
-        yAdjust: -8,
-        color: '#f87171',
-        backgroundColor: 'rgba(26,16,8,0.95)',
-        font: { size: 11 }, padding: 4,
-      }
+    };
+    a.ovenLabel = {
+      type: 'label',
+      drawTime: 'afterDatasetsDraw',
+      xValue: x, yValue: 6, xScaleID: 'x', yScaleID: 'y2',
+      content: ['🔥 Oven aan'],
+      color: '#f87171',
+      backgroundColor: 'rgba(26,16,8,0.95)',
+      borderColor: '#f87171', borderWidth: 1,
+      font: { size: 11 }, padding: 4,
     };
   }
   return a;
