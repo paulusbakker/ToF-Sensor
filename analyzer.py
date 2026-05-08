@@ -1,4 +1,5 @@
 from __future__ import annotations
+from functools import lru_cache
 import config
 
 
@@ -97,35 +98,77 @@ def smooth_trend_speed_series(measurements: list) -> list:
     return result
 
 
-def smooth_trend_for_history(measurements: list, window_min: int = 60) -> list:
-    """Niet-causale gecentreerde rolling mean (±window_min/2) over de
-    gladde trend-snelheid. Geeft de S-curve die een mens met de pen
-    door de puntenwolk zou trekken.
+def smooth_trend_for_history(measurements: list, window_length: int = 121,
+                             polyorder: int = 3) -> list:
+    """Niet-causale Savitzky-Golay smoothing van de gladde trend-snelheid.
 
-    LET OP: gebruikt toekomstige meetwaarden en is daarom alleen
-    geschikt voor history-views waar de hele sessie beschikbaar is.
-    Het live dashboard moet causaal blijven en gebruikt
-    smooth_trend_speed_series.
+    SG fit per venster een lokale polynoom (graad `polyorder`) en gebruikt
+    daarvan de waarde in het midden. Het kijkt vooruit én achteruit, dus
+    alleen geschikt voor history-views; live dashboard moet causaal
+    blijven en gebruikt smooth_trend_speed_series.
 
-    Aan begin en einde krimpt het venster asymmetrisch.
+    Default window 121 samples = 60 min bij 30s sample-interval (oneven
+    is vereist), polyorder 3 voor een S-curve. Aan begin/einde krimpt
+    het venster symmetrisch met passend lagere polyorder.
     """
     if not measurements:
         return []
     raw = smooth_trend_speed_series(measurements)
-    half_s = (window_min / 2) * 60
-    n = len(measurements)
-    result = []
-    lo = 0
-    hi = 0
-    for i, m in enumerate(measurements):
-        ts_i = m["ts"]
-        while lo < n and measurements[lo]["ts"] < ts_i - half_s:
-            lo += 1
-        while hi < n and measurements[hi]["ts"] <= ts_i + half_s:
-            hi += 1
-        window = raw[lo:hi]
-        result.append(sum(window) / len(window) if window else 0.0)
-    return result
+    return _savgol_filter(raw, window_length, polyorder)
+
+
+@lru_cache(maxsize=256)
+def _savgol_coeffs(window_length: int, polyorder: int) -> tuple:
+    """Symmetrische Savitzky-Golay smoothing-coëfficiënten (centrale
+    output, derivative=0). Werkt voor uniforme sample-spacing.
+    """
+    half = window_length // 2
+    n_cols = polyorder + 1
+    js = list(range(-half, half + 1))
+    # AtA[a][b] = sum_j j^(a+b)
+    moments = [sum(j**p for j in js) for p in range(2 * polyorder + 1)]
+    aug = [[moments[a + b] for b in range(n_cols)] + [1.0 if a == 0 else 0.0]
+           for a in range(n_cols)]
+    # Gauss-Jordan: lost (AtA) z = e0 op
+    for i in range(n_cols):
+        piv = aug[i][i]
+        for j in range(n_cols + 1):
+            aug[i][j] /= piv
+        for k in range(n_cols):
+            if k != i:
+                f = aug[k][i]
+                for j in range(n_cols + 1):
+                    aug[k][j] -= f * aug[i][j]
+    z = [aug[i][n_cols] for i in range(n_cols)]
+    # h[j] = sum_k z_k * j^k → impulse response van het filter
+    return tuple(sum(z[k] * (j**k) for k in range(n_cols)) for j in js)
+
+
+def _savgol_filter(values: list, window_length: int, polyorder: int) -> list:
+    n = len(values)
+    if n == 0:
+        return []
+    wl = min(window_length, n if n % 2 == 1 else n - 1)
+    if wl < 3:
+        return list(values)
+    if wl % 2 == 0:
+        wl -= 1
+    po = min(polyorder, wl - 1)
+    half = wl // 2
+    coeffs = _savgol_coeffs(wl, po)
+    out = list(values)
+    for i in range(half, n - half):
+        out[i] = sum(coeffs[k] * values[i - half + k] for k in range(wl))
+    # Randen: kleiner symmetrisch venster met aangepaste polyorder
+    for i in range(half):
+        w = 2 * i + 1
+        if w < 3:
+            continue
+        po_e = min(po, w - 1)
+        c = _savgol_coeffs(w, po_e)
+        out[i]         = sum(c[k] * values[k]         for k in range(w))
+        out[n - 1 - i] = sum(c[k] * values[n - w + k] for k in range(w))
+    return out
 
 
 class BakingSignal:
