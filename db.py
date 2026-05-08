@@ -122,7 +122,8 @@ def list_sessions() -> list:
         rows = c.execute(
             """SELECT id, started_at, ended_at, baseline_mm, notes,
                       flour_type, hydration_pct, verdict, verdict_notes,
-                      peak_speed_mm_h, total_rise_mm, oven_triggered
+                      peak_speed_mm_h, total_rise_mm, oven_triggered,
+                      oven_at, signal_fired_at
                FROM sessions ORDER BY id DESC"""
         ).fetchall()
         return [dict(r) for r in rows]

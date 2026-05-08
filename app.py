@@ -50,8 +50,22 @@ _last_successful_measurement_ts = 0.0
 
 def _enrich_measurements(measurements: list) -> list:
     smoothed = analyzer.smooth_rise_series(measurements)
-    return [{**m, "rise_mm_smoothed": round(smoothed[i], 2)}
+    trend    = analyzer.trend_speed_series(measurements)
+    return [{**m,
+             "rise_mm_smoothed":   round(smoothed[i], 2),
+             "trend_speed_mm_h":   round(trend[i], 2)}
             for i, m in enumerate(measurements)]
+
+
+def _peak_trend_speed(measurements: list) -> float:
+    if not measurements:
+        return 0.0
+    trend = analyzer.trend_speed_series(measurements)
+    warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN) * 60
+    cutoff   = measurements[0]["ts"] + warmup_s
+    valid = [s for i, s in enumerate(trend)
+             if s > 0 and measurements[i]["ts"] >= cutoff]
+    return round(max(valid, default=0.0), 2)
 
 
 def _broadcast(payload: dict):
@@ -422,7 +436,9 @@ def api_session_detail(session_id):
     sess = next((s for s in sessions if s["id"] == session_id), None)
     if not sess:
         return jsonify({"error": "Niet gevonden"}), 404
-    measurements = _enrich_measurements(db.get_measurements(session_id))
+    raw          = db.get_measurements(session_id)
+    measurements = _enrich_measurements(raw)
+    sess["peak_trend_speed_mm_h"] = _peak_trend_speed(raw)
     return jsonify({"session": sess, "measurements": measurements})
 
 
