@@ -264,7 +264,7 @@ async function loadDetail(id) {
 
   document.getElementById('detail-title').textContent = fmtDate(data.session.started_at);
   document.getElementById('d-rise').textContent    = data.session.total_rise_mm != null ? data.session.total_rise_mm.toFixed(1) : '—';
-  document.getElementById('d-speed').textContent   = data.session.peak_speed_mm_h != null ? data.session.peak_speed_mm_h.toFixed(1) : '—';
+  document.getElementById('d-speed').textContent   = data.session.peak_trend_speed_mm_h != null && data.session.peak_trend_speed_mm_h > 0 ? data.session.peak_trend_speed_mm_h.toFixed(1) : '—';
   document.getElementById('d-flour').textContent   = data.session.flour_type || '—';
   document.getElementById('d-hydration').textContent = data.session.hydration_pct ? data.session.hydration_pct + '%' : '—';
   document.getElementById('export-link').href = `/api/sessions/${id}/export`;
@@ -309,6 +309,12 @@ function renderDetailChart(measurements) {
           data: measurements.map(m => ({ x: m.ts * 1000, y: (m.rise_mm_smoothed != null ? m.rise_mm_smoothed : (m.rise_mm || 0)) })),
           borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)',
           borderWidth: 2, pointRadius: 0, tension: 0.3, fill: true, yAxisID: 'y',
+        },
+        {
+          label: 'Trend-snelheid (mm/u)',
+          data: measurements.map(m => ({ x: m.ts * 1000, y: m.trend_speed_mm_h != null ? m.trend_speed_mm_h : 0 })),
+          borderColor: '#60a5fa', backgroundColor: 'transparent',
+          borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, yAxisID: 'y2',
         }
       ]
     },
@@ -326,6 +332,10 @@ function renderDetailChart(measurements) {
           position: 'left',
           grid: { color: '#ffffff0a' },
           ticks: { color: '#f59e0b', font: { size: 10 }, callback: v => v + ' mm' },
+        },
+        y2: {
+          position: 'right', grid: { display: false },
+          ticks: { color: '#60a5fa', font: { size: 10 }, callback: v => v + ' mm/u' },
         }
       },
       plugins: {
