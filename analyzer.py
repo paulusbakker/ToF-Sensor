@@ -97,6 +97,37 @@ def smooth_trend_speed_series(measurements: list) -> list:
     return result
 
 
+def smooth_trend_for_history(measurements: list, window_min: int = 60) -> list:
+    """Niet-causale gecentreerde rolling mean (±window_min/2) over de
+    gladde trend-snelheid. Geeft de S-curve die een mens met de pen
+    door de puntenwolk zou trekken.
+
+    LET OP: gebruikt toekomstige meetwaarden en is daarom alleen
+    geschikt voor history-views waar de hele sessie beschikbaar is.
+    Het live dashboard moet causaal blijven en gebruikt
+    smooth_trend_speed_series.
+
+    Aan begin en einde krimpt het venster asymmetrisch.
+    """
+    if not measurements:
+        return []
+    raw = smooth_trend_speed_series(measurements)
+    half_s = (window_min / 2) * 60
+    n = len(measurements)
+    result = []
+    lo = 0
+    hi = 0
+    for i, m in enumerate(measurements):
+        ts_i = m["ts"]
+        while lo < n and measurements[lo]["ts"] < ts_i - half_s:
+            lo += 1
+        while hi < n and measurements[hi]["ts"] <= ts_i + half_s:
+            hi += 1
+        window = raw[lo:hi]
+        result.append(sum(window) / len(window) if window else 0.0)
+    return result
+
+
 class BakingSignal:
     def __init__(self, triggered: bool, reason: str = "", minutes_until_bake: int = 0):
         self.triggered = triggered

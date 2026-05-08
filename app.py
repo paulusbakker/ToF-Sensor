@@ -55,7 +55,7 @@ def _trend_warmup_s() -> int:
 
 def _enrich_measurements(measurements: list) -> list:
     smoothed = analyzer.smooth_rise_series(measurements)
-    trend    = analyzer.smooth_trend_speed_series(measurements)
+    trend    = analyzer.smooth_trend_for_history(measurements)
     cutoff   = measurements[0]["ts"] + _trend_warmup_s() if measurements else 0
     valid    = [s for i, s in enumerate(trend)
                 if s > 0 and measurements[i]["ts"] >= cutoff]
@@ -77,7 +77,7 @@ def _enrich_measurements(measurements: list) -> list:
 def _peak_trend_speed(measurements: list) -> float:
     if not measurements:
         return 0.0
-    trend = analyzer.smooth_trend_speed_series(measurements)
+    trend = analyzer.smooth_trend_for_history(measurements)
     cutoff = measurements[0]["ts"] + _trend_warmup_s()
     valid = [s for i, s in enumerate(trend)
              if s > 0 and measurements[i]["ts"] >= cutoff]
