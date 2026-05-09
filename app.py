@@ -189,7 +189,7 @@ def _sensor_loop():
                     speed = analyzer.compute_speed(dummy)[-1]
                     db.log_measurement(session["id"], dist, rise_mm, speed)
                     all_m   = db.get_measurements(session["id"])
-                    summary = analyzer.summarize(all_m)
+                    summary = analyzer.summarize(all_m, session.get("dough_height_cm"))
                     _broadcast({"type": "measurement", "oven_on": _oven_on, **summary})
                     log.info(f"dist={dist}mm  rijs={rise_mm:.1f}mm  speed={speed:.2f}mm/u")
                     if (_signal_fired and not _oven_on
@@ -328,7 +328,7 @@ def stream():
             session = _active_session
         if session:
             history = _enrich_measurements(db.get_measurements(session["id"]))
-            summary = analyzer.summarize(history)
+            summary = analyzer.summarize(history, session.get("dough_height_cm"))
             yield f"data: {json.dumps({'type': 'history', 'points': history, 'oven_on': _oven_on, 'oven_at': session.get('oven_at'), **summary})}\n\n"
         else:
             yield f"data: {json.dumps({'type': 'no_session'})}\n\n"
@@ -357,6 +357,8 @@ def api_start():
     flour_type   = body.get("flour_type") or None
     hydration    = body.get("hydration_pct")
     hydration    = int(hydration) if hydration is not None else None
+    dough_height = body.get("dough_height_cm")
+    dough_height = float(dough_height) if dough_height not in (None, "") else None
 
     # Sluit ALLE open sessies af (ook sessies van voor een reboot)
     for sess in db.list_unclosed_sessions():
@@ -381,7 +383,8 @@ def api_start():
     if dist is None:
         return jsonify({"ok": False, "error": "Geen sensordata beschikbaar (timeout)"}), 500
 
-    session_id = db.start_session(float(dist), notes, flour_type, hydration)
+    session_id = db.start_session(float(dist), notes, flour_type, hydration,
+                                  dough_height)
     with _lock:
         _active_session = db.get_active_session()
         if _oven_timer:
@@ -402,7 +405,7 @@ def api_status():
     if not session:
         return jsonify({"session": None})
     measurements = db.get_measurements(session["id"])
-    summary = analyzer.summarize(measurements)
+    summary = analyzer.summarize(measurements, session.get("dough_height_cm"))
     return jsonify({"session": session, "oven_on": _oven_on, **summary})
 
 

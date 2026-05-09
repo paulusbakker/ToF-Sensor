@@ -41,6 +41,7 @@ def init_db():
             ("total_rise_mm",   "ALTER TABLE sessions ADD COLUMN total_rise_mm REAL"),
             ("ended_at",        "ALTER TABLE sessions ADD COLUMN ended_at REAL"),
             ("signal_fired_at", "ALTER TABLE sessions ADD COLUMN signal_fired_at REAL"),
+            ("dough_height_cm", "ALTER TABLE sessions ADD COLUMN dough_height_cm REAL"),
         ]
         for col, sql in migrations:
             if col not in existing:
@@ -49,12 +50,15 @@ def init_db():
 
 
 def start_session(baseline_mm: float, notes: str = "",
-                  flour_type: str = None, hydration_pct: int = None) -> int:
+                  flour_type: str = None, hydration_pct: int = None,
+                  dough_height_cm: float = None) -> int:
     with _conn() as c:
         cur = c.execute(
-            """INSERT INTO sessions (started_at, baseline_mm, notes, flour_type, hydration_pct)
-               VALUES (?,?,?,?,?)""",
-            (time.time(), baseline_mm, notes, flour_type, hydration_pct),
+            """INSERT INTO sessions (started_at, baseline_mm, notes, flour_type,
+                                    hydration_pct, dough_height_cm)
+               VALUES (?,?,?,?,?,?)""",
+            (time.time(), baseline_mm, notes, flour_type, hydration_pct,
+             dough_height_cm),
         )
         return cur.lastrowid
 
@@ -123,7 +127,7 @@ def list_sessions() -> list:
             """SELECT id, started_at, ended_at, baseline_mm, notes,
                       flour_type, hydration_pct, verdict, verdict_notes,
                       peak_speed_mm_h, total_rise_mm, oven_triggered,
-                      oven_at, signal_fired_at
+                      oven_at, signal_fired_at, dough_height_cm
                FROM sessions ORDER BY id DESC"""
         ).fetchall()
         return [dict(r) for r in rows]
