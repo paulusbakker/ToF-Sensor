@@ -14,6 +14,10 @@ SMOOTH_WINDOW_MIN = 15         # rolling mean window (minuten) voor rijs-smoothi
 TREND_WINDOW_MIN  = 40         # window (minuten) voor trend-snelheid (lin. regressie)
 SMOOTH_TREND_MIN  = 30         # rolling mean window (minuten) over de trend-snelheid
 SIGNAL_REMINDER_MIN = 20       # interval (minuten) voor herhaalde bakmoment-melding
+MIN_SLOWDOWN_DURATION_MIN = 60 # snelheid moet zo lang aaneengesloten onder de drempel blijven
+PEAK_IGNORE_EARLY_MIN     = 90 # eerste minuten van sessie negeren bij peak-bepaling
+MIN_SESSION_DURATION_MIN  = 240# minimumduur van sessie voordat triggeren is toegestaan
+RESUME_SPEED_RATIO        = 0.50 # > deze fractie van piek na trigger → "echt weer aan het rijzen"
 
 # ─── Oven (Tuya/tinytuya) ─────────────────────────────────
 # Stap 1: pip install tinytuya
