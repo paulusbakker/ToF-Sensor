@@ -357,6 +357,10 @@
       <input type="number" id="hydration" min="50" max="100" placeholder="bijv. 75">
     </div>
     <div class="form-row">
+      <label>Begin-hoogte deeg (cm, optioneel)</label>
+      <input type="number" id="dough-height" step="0.5" min="2" max="20" placeholder="bijv. 4.5">
+    </div>
+    <div class="form-row">
       <label>Notitie (optioneel)</label>
       <input type="text" id="start-notes" placeholder="">
     </div>
@@ -394,6 +398,11 @@
         <div class="value" id="rise-mm">—</div>
         <div class="unit">mm gestegen</div>
         <div class="label">Rijs (absoluut)</div>
+      </div>
+      <div class="metric" id="rise-pct-dough-card" style="grid-column:1/-1;display:none">
+        <div class="value" id="rise-pct-dough">—</div>
+        <div class="unit">% van deeghoogte</div>
+        <div class="label">Rijs (relatief)</div>
       </div>
       <div class="metric" style="grid-column:1/-1">
         <div class="value speed" id="speed">—</div>
@@ -720,6 +729,13 @@ function applyData(d) {
     d.peak_speed && d.peak_speed > 0 && d.pct_of_peak != null
       ? Math.round(d.pct_of_peak) + '% van piek'
       : '—');
+  const pctCard = document.getElementById('rise-pct-dough-card');
+  if (d.rise_pct_of_dough != null) {
+    setText('rise-pct-dough', d.rise_pct_of_dough + '%');
+    if (pctCard) pctCard.style.display = '';
+  } else if (pctCard) {
+    pctCard.style.display = 'none';
+  }
   setText('dist-badge', d.distance_mm ? d.distance_mm + ' mm sensor' : '');
   setText('status-label', d.status_label || '');
   setText('signal-text',  d.signal_reason || '');
@@ -841,6 +857,11 @@ function connect() {
       setOvenState(data.oven_on);
       if (data.oven_on && data.ts) setOvenOnAnnotation(data.ts);
     }
+    else if (data.type === 'signal_reset') {
+      document.getElementById('oven-alert').classList.remove('visible');
+      if (ovenTimer) { clearInterval(ovenTimer); ovenTimer = null; }
+      clearOvenAnnotation();
+    }
     else if (data.type === 'sensor_offline') {
       const dot = document.getElementById('status-dot');
       if (dot) dot.className = 'dot fire';
@@ -887,13 +908,15 @@ async function confirmStart() {
   const flour_type    = document.getElementById('flour-type').value || null;
   const hydration_raw = document.getElementById('hydration').value;
   const hydration_pct = hydration_raw ? parseInt(hydration_raw) : null;
+  const dough_raw     = document.getElementById('dough-height').value;
+  const dough_height_cm = dough_raw ? parseFloat(dough_raw) : null;
   const notes         = document.getElementById('start-notes').value || '';
   closeStartModal();
   try {
     const r = await fetch('/api/start', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({notes, flour_type, hydration_pct})
+      body: JSON.stringify({notes, flour_type, hydration_pct, dough_height_cm})
     });
     const d = await parseJsonOrThrow(r);
     if (d.ok) {

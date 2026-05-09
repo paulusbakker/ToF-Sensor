@@ -226,7 +226,7 @@ def check_baking_moment(measurements: list) -> BakingSignal:
     )
 
 
-def summarize(measurements: list) -> dict:
+def summarize(measurements: list, dough_height_cm: float = None) -> dict:
     if not measurements:
         return {"rise_mm": 0, "rise_mm_smoothed": 0, "speed_mm_h": 0,
                 "status": "waiting", "status_label": "Wacht op start…",
@@ -252,7 +252,7 @@ def summarize(measurements: list) -> dict:
         status, label = "slowing", "📉 Rijs vertraagt"
     else:
         status, label = "waiting", "⏳ Wacht op rijs…"
-    return {
+    out = {
         "rise_mm":          round(last["rise_mm"] or 0, 1),
         "rise_mm_smoothed": round(last_smoothed, 1),
         "speed_mm_h":       round(current_trend, 2),
@@ -265,3 +265,7 @@ def summarize(measurements: list) -> dict:
         "pct_of_peak":      round(pct_of_peak, 0),
         "ts":               last["ts"],
     }
+    if dough_height_cm and dough_height_cm > 0:
+        rise_mm_val = last["rise_mm"] or 0
+        out["rise_pct_of_dough"] = round(rise_mm_val / (dough_height_cm * 10) * 100)
+    return out

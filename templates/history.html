@@ -170,6 +170,7 @@
         <div class="stat"><div class="val" id="d-speed">—</div><div class="lbl">Pieksnelheid (mm/u)</div></div>
         <div class="stat"><div class="val" id="d-flour">—</div><div class="lbl">Deegtype</div></div>
         <div class="stat"><div class="val" id="d-hydration">—</div><div class="lbl">Hydratatie</div></div>
+        <div class="stat"><div class="val" id="d-dough-height">—</div><div class="lbl">Begin-hoogte</div></div>
       </div>
       <div class="chart-wrap">
         <canvas id="detailChart"></canvas>
@@ -245,6 +246,7 @@ function renderList() {
     const duration = s.ended_at ? fmtDuration(s.ended_at - s.started_at) : 'Actief';
     const flour    = s.flour_type || '—';
     const hydra    = s.hydration_pct ? s.hydration_pct + '%' : '—';
+    const dough    = s.dough_height_cm ? ` &nbsp;·&nbsp; ${s.dough_height_cm}cm` : '';
     const rise     = s.total_rise_mm != null ? s.total_rise_mm.toFixed(1) + ' mm' : '—';
     const speed    = s.peak_speed_mm_h != null ? s.peak_speed_mm_h.toFixed(1) + ' mm/u' : '—';
     let vtag = '';
@@ -257,7 +259,7 @@ function renderList() {
       <div>
         <div class="session-title">${fmtDate(s.started_at)}${vtag}</div>
         <div class="session-meta">
-          Duur: ${duration} &nbsp;·&nbsp; ${flour} &nbsp;·&nbsp; ${hydra}<br>
+          Duur: ${duration} &nbsp;·&nbsp; ${flour} &nbsp;·&nbsp; ${hydra}${dough}<br>
           Rijs: ${rise} &nbsp;·&nbsp; Piek: ${speed}
         </div>
       </div>
@@ -276,6 +278,7 @@ async function loadDetail(id) {
   document.getElementById('d-speed').textContent   = data.session.peak_trend_speed_mm_h != null && data.session.peak_trend_speed_mm_h > 0 ? data.session.peak_trend_speed_mm_h.toFixed(1) : '—';
   document.getElementById('d-flour').textContent   = data.session.flour_type || '—';
   document.getElementById('d-hydration').textContent = data.session.hydration_pct ? data.session.hydration_pct + '%' : '—';
+  document.getElementById('d-dough-height').textContent = data.session.dough_height_cm ? data.session.dough_height_cm + ' cm' : '—';
   document.getElementById('export-link').href = `/api/sessions/${id}/export`;
 
   // Verdict knoppen pre-fill
