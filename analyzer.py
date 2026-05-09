@@ -184,21 +184,40 @@ def check_baking_moment(measurements: list) -> BakingSignal:
     last_smoothed = smooth_rise_series(measurements)[-1]
     if last_smoothed < config.MIN_RISE_MM:
         return BakingSignal(False, f"Rijs < {config.MIN_RISE_MM} mm minimum")
+    session_duration_min = (measurements[-1]["ts"] - measurements[0]["ts"]) / 60.0
+    if session_duration_min < config.MIN_SESSION_DURATION_MIN:
+        remaining = config.MIN_SESSION_DURATION_MIN - session_duration_min
+        return BakingSignal(False,
+                            f"Sessie nog te kort (nog {remaining:.0f} min vóór analyse)")
     speeds = smooth_trend_speed_series(measurements)
     warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN
                 + config.SMOOTH_TREND_MIN) * 60
-    window_full_after = measurements[0]["ts"] + warmup_s
+    peak_ignore_s = config.PEAK_IGNORE_EARLY_MIN * 60
+    cutoff_ts = measurements[0]["ts"] + max(warmup_s, peak_ignore_s)
     valid_speeds = [s for i, s in enumerate(speeds)
-                    if s > 0 and measurements[i]["ts"] >= window_full_after]
+                    if s > 0 and measurements[i]["ts"] >= cutoff_ts]
     if not valid_speeds:
-        return BakingSignal(False, "Nog geen positieve rijssnelheid")
+        return BakingSignal(False, "Nog geen geldige piek-referentie")
     peak_speed = max(valid_speeds)
     current_speed = speeds[-1]
     ratio = current_speed / peak_speed if peak_speed > 0 else 1.0
-    if ratio < config.PEAK_SPEED_RATIO and current_speed >= 0:
+    threshold = config.PEAK_SPEED_RATIO * peak_speed
+    # Aaneengesloten vertraging: zoek het meest recente punt waarop de
+    # gladde trend nog op/over de drempel zat. Eén dip telt niet — pas
+    # als de hele suffix (lengte ≥ MIN_SLOWDOWN_DURATION_MIN) onder de
+    # drempel blijft, accepteren we de trigger.
+    last_above_ts = measurements[0]["ts"]
+    for i in range(len(measurements) - 1, -1, -1):
+        if speeds[i] >= threshold:
+            last_above_ts = measurements[i]["ts"]
+            break
+    slowdown_min = (measurements[-1]["ts"] - last_above_ts) / 60.0
+    if (current_speed >= 0 and ratio < config.PEAK_SPEED_RATIO
+            and slowdown_min >= config.MIN_SLOWDOWN_DURATION_MIN):
         return BakingSignal(
             triggered=True,
-            reason=f"Snelheid daalt ({ratio:.0%} van piek) — oven aan!",
+            reason=(f"Snelheid {slowdown_min:.0f} min < {config.PEAK_SPEED_RATIO:.0%} "
+                    f"van piek ({ratio:.0%}) — oven aan!"),
             minutes_until_bake=config.OVEN_PREHEAT_MIN,
         )
     return BakingSignal(

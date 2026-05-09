@@ -138,9 +138,11 @@ def set_session_verdict(session_id: int, verdict: str, notes: str = ""):
 
 
 def mark_signal_fired(session_id: int):
+    # Geen `AND signal_fired_at IS NULL`: als een eerder signaal gereset is
+    # (rijs hervatte), mag een latere trigger de timestamp opnieuw zetten.
     with _conn() as c:
         c.execute(
-            "UPDATE sessions SET signal_fired_at=? WHERE id=? AND signal_fired_at IS NULL",
+            "UPDATE sessions SET signal_fired_at=? WHERE id=?",
             (time.time(), session_id),
         )
 
