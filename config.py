@@ -19,6 +19,18 @@ PEAK_IGNORE_EARLY_MIN     = 90 # eerste minuten van sessie negeren bij peak-bepa
 MIN_SESSION_DURATION_MIN  = 240# minimumduur van sessie voordat triggeren is toegestaan
 RESUME_SPEED_RATIO        = 0.50 # > deze fractie van piek na trigger → "echt weer aan het rijzen"
 
+# ─── Verdachte sprong-detectie ────────────────────────────
+# Afstand t.o.v. baseline: dist > baseline + X mm = fysiek onmogelijk
+# tijdens rijzen (deeg kan niet verder van sensor af bewegen).
+JUMP_BASELINE_INCREASE_MM = 12
+# Sprong t.o.v. recente mediaan: grote discrete verschuiving van het mandje
+# of de sensor. Asymmetrisch: ↑ is verdachter dan ↓ (rijzen gaat snel).
+JUMP_RECENT_INCREASE_MM   = 15
+JUMP_RECENT_DECREASE_MM   = 30
+JUMP_RECENT_WINDOW        = 5   # aantal recente metingen voor mediaan
+# Minimuminterval tussen waarschuwingen om spam te voorkomen.
+JUMP_SUPPRESS_MIN         = 5
+
 # ─── Oven (Tuya/tinytuya) ─────────────────────────────────
 # Stap 1: pip install tinytuya
 # Stap 2: python -m tinytuya wizard   → volg de stappen
