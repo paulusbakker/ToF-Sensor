@@ -151,6 +151,14 @@ def mark_signal_fired(session_id: int):
         )
 
 
+def update_session_baseline(session_id: int, baseline_mm: float):
+    with _conn() as c:
+        c.execute(
+            "UPDATE sessions SET baseline_mm=? WHERE id=?",
+            (baseline_mm, session_id),
+        )
+
+
 def mark_oven_triggered(session_id: int):
     with _conn() as c:
         c.execute(

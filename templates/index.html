@@ -137,6 +137,24 @@
   .alert.visible { display: block; }
   .alert .countdown { font-size: 1.3rem; font-weight: 800; color: var(--orange); margin-top: 4px; }
 
+  /* ── Jump alert (verdachte sprong) ── */
+  .alert-jump {
+    display: none;
+    background: linear-gradient(135deg, #78350f, #451a03);
+    border: 1px solid var(--amber);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    font-size: 0.9rem;
+    line-height: 1.45;
+  }
+  .alert-jump.visible { display: block; }
+  .alert-jump .title { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+  .alert-jump .reason { color: var(--cream); opacity: 0.85; font-size: 0.82rem; margin-bottom: 10px; }
+  .alert-jump .actions { display: flex; gap: 8px; }
+  .alert-jump .actions .btn { padding: 9px 10px; font-size: 0.8rem; }
+  .alert-jump .btn-rebaseline { background: var(--amber); color: #1a1008; }
+  .alert-jump .btn-dismiss    { background: #374151; color: var(--cream); }
+
   /* ── Chart ── */
   .chart-wrap { position: relative; height: 220px; }
   .chart-header {
@@ -418,6 +436,16 @@
       <div>Verwacht klaar: <span class="eta-time" id="eta-time">—</span></div>
       <div class="eta-remaining" id="eta-remaining"></div>
       <div class="eta-disclaimer">(schatting bij huidige snelheid)</div>
+    </div>
+
+    <!-- Alert: verdachte sprong -->
+    <div class="alert-jump" id="jump-alert">
+      <div class="title">⚠️ Onverwachte sprong gedetecteerd — sensor verplaatst?</div>
+      <div class="reason" id="jump-reason"></div>
+      <div class="actions">
+        <button class="btn btn-rebaseline" onclick="rebaseline()">📏 Baseline opnieuw instellen</button>
+        <button class="btn btn-dismiss" onclick="dismissJump()">Sluiten</button>
+      </div>
     </div>
 
     <!-- Alert: oven gepland -->
@@ -857,6 +885,14 @@ function connect() {
       setOvenState(data.oven_on);
       if (data.oven_on && data.ts) setOvenOnAnnotation(data.ts);
     }
+    else if (data.type === 'jump_warning') {
+      const el = document.getElementById('jump-alert');
+      setText('jump-reason', data.reason || '');
+      el.classList.add('visible');
+    }
+    else if (data.type === 'jump_dismissed' || data.type === 'baseline_reset') {
+      document.getElementById('jump-alert').classList.remove('visible');
+    }
     else if (data.type === 'signal_reset') {
       document.getElementById('oven-alert').classList.remove('visible');
       if (ovenTimer) { clearInterval(ovenTimer); ovenTimer = null; }
@@ -926,6 +962,7 @@ async function confirmStart() {
       clearOvenAnnotation();
       if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
       document.getElementById('oven-alert').classList.remove('visible');
+      document.getElementById('jump-alert').classList.remove('visible');
       document.getElementById('verdict-card').style.display = 'none';
       document.getElementById('prediction-card').style.display = 'none';
       if (ovenTimer) clearInterval(ovenTimer);
@@ -1040,6 +1077,7 @@ async function stopSession() {
       clearOvenAnnotation();
       if (chart) { chart.data.datasets[0].data = []; chart.data.datasets[1].data = []; chart.update(); }
       document.getElementById('oven-alert').classList.remove('visible');
+      document.getElementById('jump-alert').classList.remove('visible');
       document.getElementById('verdict-card').style.display = 'none';
       document.getElementById('prediction-card').style.display = 'none';
       if (ovenTimer) clearInterval(ovenTimer);
@@ -1049,6 +1087,26 @@ async function stopSession() {
   } catch (err) {
     alert('Fout: ' + err.message);
   }
+}
+
+async function rebaseline() {
+  if (!confirm('Huidige afstand instellen als nieuwe baseline?\n\nDe sessie loopt door, maar de eerdere rijs-meting wordt opnieuw vanaf nu geteld.')) return;
+  try {
+    const r = await fetch('/api/rebaseline', { method: 'POST' });
+    const d = await parseJsonOrThrow(r);
+    if (d.ok) {
+      document.getElementById('jump-alert').classList.remove('visible');
+    } else {
+      alert('Kon baseline niet instellen: ' + (d.error || 'onbekende fout'));
+    }
+  } catch (err) {
+    alert('Fout: ' + err.message);
+  }
+}
+
+async function dismissJump() {
+  document.getElementById('jump-alert').classList.remove('visible');
+  try { await fetch('/api/jump_dismiss', { method: 'POST' }); } catch {}
 }
 
 async function controlOven(action) {

@@ -46,6 +46,8 @@ _signal_fired = False
 _last_signal_reminder_ts = 0.0
 _sensor_offline = False
 _last_successful_measurement_ts = 0.0
+_jump_warning_active = False
+_last_jump_warning_ts = 0.0
 
 
 def _trend_warmup_s() -> int:
@@ -149,8 +151,34 @@ def _read_with_timeout(sensor, timeout_s: float = 20.0) -> int:
     return holder["value"]
 
 
+def _detect_jump(dist: int, baseline: float, recent: list) -> str | None:
+    """Return een reden-string als de meting verdacht is, anders None.
+
+    Eerdere sensor-laag rejecteert al single-shot ruis (std_dev > 15mm → -2),
+    dus hier focussen we op blijvende verschuivingen tussen geldige metingen.
+    """
+    # Onmogelijke fysica: afstand groter dan baseline + marge.
+    if dist > baseline + config.JUMP_BASELINE_INCREASE_MM:
+        return (f"Afstand {dist}mm is {dist - baseline:.0f}mm boven baseline "
+                f"({baseline:.0f}mm) — deeg kan niet verder van sensor.")
+    # Discrete sprong vs. recente mediaan.
+    recent_dists = [m["distance_mm"] for m in recent[-config.JUMP_RECENT_WINDOW:]
+                    if m.get("distance_mm")]
+    if len(recent_dists) >= 3:
+        s = sorted(recent_dists)
+        median = s[len(s) // 2]
+        diff = dist - median
+        if diff > config.JUMP_RECENT_INCREASE_MM:
+            return (f"Afstand sprong +{diff:.0f}mm t.o.v. recente metingen "
+                    f"({median}mm → {dist}mm).")
+        if -diff > config.JUMP_RECENT_DECREASE_MM:
+            return (f"Afstand sprong {diff:.0f}mm t.o.v. recente metingen "
+                    f"({median}mm → {dist}mm).")
+    return None
+
+
 def _sensor_loop():
-    global _oven_timer, _oven_on, _latest_distance_mm, _latest_distance_ts, _sensor_enabled, _signal_fired, _last_signal_reminder_ts, _sensor_offline, _last_successful_measurement_ts
+    global _oven_timer, _oven_on, _latest_distance_mm, _latest_distance_ts, _sensor_enabled, _signal_fired, _last_signal_reminder_ts, _sensor_offline, _last_successful_measurement_ts, _jump_warning_active, _last_jump_warning_ts
     print("[sensor_loop] thread gestart", flush=True)
     try:
         from sensor import VL53L1X
@@ -188,6 +216,27 @@ def _sensor_loop():
                                           "distance_mm": dist, "speed_mm_h": 0}]
                     speed = analyzer.compute_speed(dummy)[-1]
                     db.log_measurement(session["id"], dist, rise_mm, speed)
+                    jump_reason = _detect_jump(dist, baseline, recent)
+                    if jump_reason:
+                        suppress_s = config.JUMP_SUPPRESS_MIN * 60
+                        if (not _jump_warning_active and
+                                time.time() - _last_jump_warning_ts > suppress_s):
+                            _jump_warning_active = True
+                            _last_jump_warning_ts = time.time()
+                            log.warning(f"[jump] {jump_reason}")
+                            _broadcast({
+                                "type": "jump_warning",
+                                "reason": jump_reason,
+                                "current_mm": dist,
+                                "baseline_mm": baseline,
+                                "ts": time.time(),
+                            })
+                            _send_notification(
+                                "⚠️ Onverwachte sprong gedetecteerd",
+                                jump_reason + " Sensor of mandje verplaatst?",
+                                "warning",
+                                priority="high",
+                            )
                     all_m   = db.get_measurements(session["id"])
                     summary = analyzer.summarize(all_m, session.get("dough_height_cm"))
                     _broadcast({"type": "measurement", "oven_on": _oven_on, **summary})
@@ -351,7 +400,7 @@ def stream():
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _signal_fired, _last_signal_reminder_ts, _latest_distance_mm, _latest_distance_ts, _sensor_offline, _last_successful_measurement_ts
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _signal_fired, _last_signal_reminder_ts, _latest_distance_mm, _latest_distance_ts, _sensor_offline, _last_successful_measurement_ts, _jump_warning_active, _last_jump_warning_ts
     body = request.json or {}
     notes        = body.get("notes", "")
     flour_type   = body.get("flour_type") or None
@@ -395,6 +444,8 @@ def api_start():
         _last_signal_reminder_ts = 0.0
         _sensor_offline = False
         _last_successful_measurement_ts = 0.0
+        _jump_warning_active = False
+        _last_jump_warning_ts = 0.0
     return jsonify({"ok": True, "session_id": session_id, "baseline_mm": dist})
 
 
@@ -504,9 +555,41 @@ def api_session_export(session_id):
     )
 
 
+@app.route("/api/rebaseline", methods=["POST"])
+def api_rebaseline():
+    global _active_session, _jump_warning_active, _last_jump_warning_ts
+    with _lock:
+        session = _active_session
+        d = _latest_distance_mm
+        ts = _latest_distance_ts
+    if not session:
+        return jsonify({"ok": False, "error": "Geen actieve sessie"}), 400
+    if not d or d <= 0 or ts == 0.0:
+        return jsonify({"ok": False, "error": "Geen recente sensordata"}), 400
+    new_baseline = float(d)
+    db.update_session_baseline(session["id"], new_baseline)
+    with _lock:
+        _active_session = db.get_active_session()
+        _jump_warning_active = False
+        _last_jump_warning_ts = 0.0
+    log.info(f"[rebaseline] sessie {session['id']}: baseline → {new_baseline:.0f}mm")
+    _broadcast({"type": "baseline_reset", "baseline_mm": new_baseline,
+                "ts": time.time()})
+    return jsonify({"ok": True, "baseline_mm": new_baseline})
+
+
+@app.route("/api/jump_dismiss", methods=["POST"])
+def api_jump_dismiss():
+    global _jump_warning_active
+    with _lock:
+        _jump_warning_active = False
+    _broadcast({"type": "jump_dismissed", "ts": time.time()})
+    return jsonify({"ok": True})
+
+
 @app.route("/api/stop", methods=["POST"])
 def api_stop():
-    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm, _latest_distance_ts, _signal_fired, _last_signal_reminder_ts, _sensor_offline, _last_successful_measurement_ts
+    global _active_session, _oven_timer, _oven_on, _sensor_enabled, _latest_distance_mm, _latest_distance_ts, _signal_fired, _last_signal_reminder_ts, _sensor_offline, _last_successful_measurement_ts, _jump_warning_active, _last_jump_warning_ts
     unclosed = db.list_unclosed_sessions()
     for sess in unclosed:
         db.end_session(sess["id"])
@@ -523,6 +606,8 @@ def api_stop():
         _last_signal_reminder_ts = 0.0
         _sensor_offline = False
         _last_successful_measurement_ts = 0.0
+        _jump_warning_active = False
+        _last_jump_warning_ts = 0.0
     _broadcast({"type": "no_session"})
     return jsonify({"ok": True, "closed": len(unclosed)})
 
