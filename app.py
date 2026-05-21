@@ -231,23 +231,6 @@ def _sensor_loop():
                     summary = analyzer.summarize(all_m, session.get("dough_height_cm"))
                     _broadcast({"type": "measurement", "oven_on": _oven_on, **summary})
                     log.info(f"dist={dist}mm  rijs={rise_mm:.1f}mm  speed={speed:.2f}mm/u")
-                    if (_signal_fired and not _oven_on
-                            and summary.get("peak_speed", 0) > 0):
-                        resume_ratio = (summary["speed_mm_h"]
-                                        / summary["peak_speed"])
-                        if resume_ratio > config.RESUME_SPEED_RATIO:
-                            _signal_fired = False
-                            _last_signal_reminder_ts = 0.0
-                            if _oven_timer:
-                                _oven_timer.cancel()
-                                _oven_timer = None
-                            log.info(f"[signal-reset] rijs hervat ({resume_ratio:.0%} van piek)")
-                            _broadcast({
-                                "type": "signal_reset",
-                                "reason": (f"Snelheid {resume_ratio:.0%} van piek "
-                                           f"— deeg rijst weer"),
-                                "ts": time.time(),
-                            })
                     signal = analyzer.check_baking_moment(all_m)
                     if signal.triggered and not _signal_fired and _oven_timer is None and not _oven_on:
                         _signal_fired = True

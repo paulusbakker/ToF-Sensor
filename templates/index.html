@@ -698,7 +698,9 @@ function applyData(d) {
   showSession();
 
   // Metrics
-  setText('rise-mm',  d.rise_mm  != null ? d.rise_mm.toFixed(1)  : '—');
+  const riseDisplay = d.rise_mm_smoothed != null ? d.rise_mm_smoothed
+                    : (d.rise_mm != null ? d.rise_mm : null);
+  setText('rise-mm',  riseDisplay != null ? riseDisplay.toFixed(1) : '—');
   setText('speed',    d.speed_mm_h != null ? d.speed_mm_h.toFixed(2) : '—');
   setText('plateau-info', formatPlateau(d.plateau_min));
   const pctCard = document.getElementById('rise-pct-dough-card');

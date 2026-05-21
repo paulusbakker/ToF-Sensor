@@ -308,6 +308,5 @@ def summarize(measurements: list, dough_height_cm: float = None) -> dict:
         "ts":               last["ts"],
     }
     if dough_height_cm and dough_height_cm > 0:
-        rise_mm_val = last["rise_mm"] or 0
-        out["rise_pct_of_dough"] = round(rise_mm_val / (dough_height_cm * 10) * 100)
+        out["rise_pct_of_dough"] = round(last_smoothed / (dough_height_cm * 10) * 100)
     return out
