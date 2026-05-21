@@ -321,16 +321,6 @@ function renderDetailChart(measurements) {
           data: measurements.map(m => ({ x: m.ts * 1000, y: (m.rise_mm_smoothed != null ? m.rise_mm_smoothed : (m.rise_mm || 0)) })),
           borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)',
           borderWidth: 2.5, pointRadius: 0, tension: 0.3, fill: true, yAxisID: 'y',
-        },
-        {
-          label: '% van piek',
-          data: measurements.map(m => ({ x: m.ts * 1000,
-                                          y: m.pct_of_peak != null ? m.pct_of_peak : null })),
-          borderColor: 'rgba(96,165,250,0.6)', backgroundColor: 'transparent',
-          borderWidth: 1.5, pointRadius: 0,
-          tension: 0.4, cubicInterpolationMode: 'monotone',
-          borderDash: [4, 4],
-          fill: false, spanGaps: false, yAxisID: 'y2',
         }
       ]
     },
@@ -350,9 +340,11 @@ function renderDetailChart(measurements) {
           ticks: { color: '#f59e0b', font: { size: 10 }, callback: v => v + ' mm' },
         },
         y2: {
+          // Verborgen schaal: bestaat alleen nog als anker voor de
+          // signal/oven-label annotaties (yValue: 6 op deze schaal).
+          display: false,
           position: 'right', grid: { display: false },
           min: 0, max: 110,
-          ticks: { color: '#60a5fa', font: { size: 10 }, callback: v => v + '%' },
         }
       },
       plugins: {

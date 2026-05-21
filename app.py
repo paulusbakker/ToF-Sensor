@@ -59,20 +59,10 @@ def _enrich_measurements(measurements: list) -> list:
     smoothed = analyzer.smooth_rise_series(measurements)
     trend    = analyzer.smooth_trend_for_history(measurements)
     cutoff   = measurements[0]["ts"] + _trend_warmup_s() if measurements else 0
-    valid    = [s for i, s in enumerate(trend)
-                if s > 0 and measurements[i]["ts"] >= cutoff]
-    peak     = max(valid, default=0.0)
-
-    def _pct(i, m):
-        if m["ts"] < cutoff or peak <= 0:
-            return None
-        return round(trend[i] / peak * 100.0, 1)
-
     return [{**m,
              "rise_mm_smoothed":   round(smoothed[i], 2),
              "trend_speed_mm_h":   (round(trend[i], 2)
-                                    if m["ts"] >= cutoff else None),
-             "pct_of_peak":        _pct(i, m)}
+                                    if m["ts"] >= cutoff else None)}
             for i, m in enumerate(measurements)]
 
 
@@ -241,23 +231,6 @@ def _sensor_loop():
                     summary = analyzer.summarize(all_m, session.get("dough_height_cm"))
                     _broadcast({"type": "measurement", "oven_on": _oven_on, **summary})
                     log.info(f"dist={dist}mm  rijs={rise_mm:.1f}mm  speed={speed:.2f}mm/u")
-                    if (_signal_fired and not _oven_on
-                            and summary.get("peak_speed", 0) > 0):
-                        resume_ratio = (summary["speed_mm_h"]
-                                        / summary["peak_speed"])
-                        if resume_ratio > config.RESUME_SPEED_RATIO:
-                            _signal_fired = False
-                            _last_signal_reminder_ts = 0.0
-                            if _oven_timer:
-                                _oven_timer.cancel()
-                                _oven_timer = None
-                            log.info(f"[signal-reset] rijs hervat ({resume_ratio:.0%} van piek)")
-                            _broadcast({
-                                "type": "signal_reset",
-                                "reason": (f"Snelheid {resume_ratio:.0%} van piek "
-                                           f"— deeg rijst weer"),
-                                "ts": time.time(),
-                            })
                     signal = analyzer.check_baking_moment(all_m)
                     if signal.triggered and not _signal_fired and _oven_timer is None and not _oven_on:
                         _signal_fired = True
@@ -466,7 +439,6 @@ def api_settings():
     if request.method == "GET":
         return jsonify({"auto_oven": _auto_oven_enabled,
                         "preheat_min": config.OVEN_PREHEAT_MIN,
-                        "peak_speed_ratio": config.PEAK_SPEED_RATIO,
                         "smooth_window_min": config.SMOOTH_WINDOW_MIN})
     body = request.json or {}
     with _lock:
@@ -476,11 +448,9 @@ def api_settings():
             config.OVEN_PREHEAT_MIN = max(1, int(body["preheat_min"]))
     _broadcast({"type": "settings", "auto_oven": _auto_oven_enabled,
                 "preheat_min": config.OVEN_PREHEAT_MIN,
-                "peak_speed_ratio": config.PEAK_SPEED_RATIO,
                 "smooth_window_min": config.SMOOTH_WINDOW_MIN})
     return jsonify({"ok": True, "auto_oven": _auto_oven_enabled,
                     "preheat_min": config.OVEN_PREHEAT_MIN,
-                    "peak_speed_ratio": config.PEAK_SPEED_RATIO,
                     "smooth_window_min": config.SMOOTH_WINDOW_MIN})
 
 

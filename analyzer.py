@@ -98,6 +98,55 @@ def smooth_trend_speed_series(measurements: list) -> list:
     return result
 
 
+def avg_speed_2h_series(measurements: list) -> list:
+    """Voortschrijdend 2u gemiddelde van de gladgemaakte rijs, in mm/uur.
+
+    Per index i: (smoothed[i] - smoothed[j]) / dt_h, waarbij j de eerste
+    index is met ts >= ts_i - 2u. Tijdens opstart (< ~2u data) is er geen
+    geldig 2u-venster: dan 0.0, volgens de conventie van compute_speed
+    en trend_speed_series.
+    """
+    if not measurements:
+        return []
+    smoothed = smooth_rise_series(measurements)
+    window_s = 2 * 3600
+    result = []
+    start = 0
+    for i, m in enumerate(measurements):
+        ts_i = m["ts"]
+        while measurements[start]["ts"] < ts_i - window_s:
+            start += 1
+        if ts_i - measurements[0]["ts"] < window_s:
+            result.append(0.0)
+            continue
+        dt_h = (ts_i - measurements[start]["ts"]) / 3600.0
+        if dt_h > 0:
+            result.append((smoothed[i] - smoothed[start]) / dt_h)
+        else:
+            result.append(0.0)
+    return result
+
+
+def plateau_minutes(measurements: list) -> float | None:
+    """Minuten sinds de laatste meting waarop raw rise_mm een strikt nieuw
+    maximum bereikte. Werkt op raw rise (niet smoothed) — dat is wat de
+    detectie robuust maakt tegen smoothing-lag. Retourneert None als er
+    nog geen rijs is geweest (alle metingen rise_mm == 0).
+    """
+    if not measurements:
+        return None
+    prev_max = 0.0
+    last_max_idx = None
+    for i, m in enumerate(measurements):
+        r = m["rise_mm"] or 0
+        if r > prev_max:
+            prev_max = r
+            last_max_idx = i
+    if last_max_idx is None:
+        return None
+    return (measurements[-1]["ts"] - measurements[last_max_idx]["ts"]) / 60.0
+
+
 def smooth_trend_for_history(measurements: list, window_length: int = 121,
                              polyorder: int = 3) -> list:
     """Niet-causale Savitzky-Golay smoothing van de gladde trend-snelheid.
@@ -230,23 +279,17 @@ def summarize(measurements: list, dough_height_cm: float = None) -> dict:
     if not measurements:
         return {"rise_mm": 0, "rise_mm_smoothed": 0, "speed_mm_h": 0,
                 "status": "waiting", "status_label": "Wacht op start…",
-                "peak_speed": 0, "pct_of_peak": 0}
+                "plateau_min": None}
     last = measurements[-1]
     smoothed = smooth_rise_series(measurements)
     last_smoothed = smoothed[-1]
-    trend = smooth_trend_speed_series(measurements)
-    current_trend = trend[-1] if trend else 0.0
-    warmup_s = (config.SMOOTH_WINDOW_MIN + config.TREND_WINDOW_MIN
-                + config.SMOOTH_TREND_MIN) * 60
-    window_full_after = measurements[0]["ts"] + warmup_s
-    valid = [s for i, s in enumerate(trend)
-             if s > 0 and measurements[i]["ts"] >= window_full_after]
-    peak_speed = max(valid, default=0.0)
-    pct_of_peak = (current_trend / peak_speed * 100.0) if peak_speed > 0 else 0.0
+    avg2h = avg_speed_2h_series(measurements)
+    current_speed = avg2h[-1] if avg2h else 0.0
+    plateau = plateau_minutes(measurements)
     signal = check_baking_moment(measurements)
     if signal.triggered:
         status, label = "baking", "🔥 Bakmoment nadert!"
-    elif current_trend > 0.5:
+    elif current_speed > 0.5:
         status, label = "rising", "📈 Rijst actief"
     elif last_smoothed > config.MIN_RISE_MM:
         status, label = "slowing", "📉 Rijs vertraagt"
@@ -255,17 +298,15 @@ def summarize(measurements: list, dough_height_cm: float = None) -> dict:
     out = {
         "rise_mm":          round(last["rise_mm"] or 0, 1),
         "rise_mm_smoothed": round(last_smoothed, 1),
-        "speed_mm_h":       round(current_trend, 2),
+        "speed_mm_h":       round(current_speed, 2),
         "distance_mm":      last["distance_mm"],
         "status":           status,
         "status_label":     label,
         "signal":           signal.triggered,
         "signal_reason":    signal.reason,
-        "peak_speed":       round(peak_speed, 2),
-        "pct_of_peak":      round(pct_of_peak, 0),
+        "plateau_min":      round(plateau, 1) if plateau is not None else None,
         "ts":               last["ts"],
     }
     if dough_height_cm and dough_height_cm > 0:
-        rise_mm_val = last["rise_mm"] or 0
-        out["rise_pct_of_dough"] = round(rise_mm_val / (dough_height_cm * 10) * 100)
+        out["rise_pct_of_dough"] = round(last_smoothed / (dough_height_cm * 10) * 100)
     return out
